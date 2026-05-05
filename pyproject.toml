@@ -23,6 +23,9 @@ dependencies = [
 dev = [
     "pytest>=7",
     "pytest-cov",
+    "ruff>=0.11,<0.12",
+    "mypy<1.15",
+    "black>=22,<23",
 ]
 docs = [
     "sphinx>=7",
@@ -35,3 +38,29 @@ where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+extend-exclude = ["docs", "reports", "outputs", ".pytest_cache", ".mypy_cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B", "F401"]
+"scripts/**" = ["F401"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+exclude = ["tests/", "examples/", "case_studies/", "scripts/", "docs/", "reports/"]
+files = ["src"]
