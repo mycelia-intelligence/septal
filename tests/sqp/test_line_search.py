@@ -85,19 +85,25 @@ class TestUpdatePenalty:
     def test_non_decreasing(self):
         lam = jnp.array([0.5, 1.5])
         rho = jnp.array(2.0)
-        rho_new = update_penalty(lam, rho, 2, eps=0.1)
-        # max(|lam|) = 1.5; 1.5+0.1=1.6 < 2.0 → stays at 2.0
+        # infeasible iterate → non-decreasing branch: target=1.6 < 2.0 → stays at 2.0
+        rho_new = update_penalty(
+            lam, rho, 2, eps=0.1, feasibility=jnp.array(1.0), decrease_factor=0.5
+        )
         assert float(rho_new) == pytest.approx(2.0)
 
     def test_increases_when_multiplier_large(self):
         lam = jnp.array([5.0])
         rho = jnp.array(1.0)
-        rho_new = update_penalty(lam, rho, 1, eps=0.01)
+        rho_new = update_penalty(
+            lam, rho, 1, eps=0.01, feasibility=jnp.array(1.0), decrease_factor=1.0
+        )
         assert float(rho_new) > float(rho)
 
     def test_no_constraints_unchanged(self):
         rho = jnp.array(3.0)
-        rho_new = update_penalty(jnp.zeros(0), rho, 0, eps=0.1)
+        rho_new = update_penalty(
+            jnp.zeros(0), rho, 0, eps=0.1, feasibility=jnp.array(0.0), decrease_factor=1.0
+        )
         assert float(rho_new) == pytest.approx(3.0)
 
 

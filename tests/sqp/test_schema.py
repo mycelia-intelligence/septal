@@ -88,7 +88,7 @@ class TestSQPState:
         """SQPState must be a NamedTuple (JAX pytree)."""
         import jax
 
-        n, n_g = 3, 2
+        n, n_g, M = 3, 2, 5
         state = SQPState(
             x=jnp.zeros(n),
             params_p=jnp.zeros(1),
@@ -102,15 +102,18 @@ class TestSQPState:
             feasibility=jnp.array(0.0),
             iteration=jnp.array(0, dtype=jnp.int32),
             converged=jnp.array(False),
+            merit_window=jnp.zeros(M),
+            stagnation_count=jnp.array(0, dtype=jnp.int32),
+            alpha_last=jnp.array(1.0),
         )
         # Must be flattenable by JAX
         leaves, treedef = jax.tree_util.tree_flatten(state)
-        assert len(leaves) == 12
+        assert len(leaves) == 15
         reconstructed = jax.tree_util.tree_unflatten(treedef, leaves)
         assert jnp.allclose(reconstructed.x, state.x)
 
     def test_replace(self):
-        n = 2
+        n, M = 2, 5
         state = SQPState(
             x=jnp.zeros(n),
             params_p=jnp.zeros(1),
@@ -124,6 +127,9 @@ class TestSQPState:
             feasibility=jnp.array(0.0),
             iteration=jnp.array(0, dtype=jnp.int32),
             converged=jnp.array(False),
+            merit_window=jnp.zeros(M),
+            stagnation_count=jnp.array(0, dtype=jnp.int32),
+            alpha_last=jnp.array(1.0),
         )
         new_state = state._replace(converged=jnp.array(True))
         assert bool(new_state.converged)

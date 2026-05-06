@@ -194,7 +194,14 @@ class TestAdmmQP:
     """Tests operating directly on admm_qp for fine-grained coverage."""
 
     def _run(self, cfg, Q, c, A, l, u, n_iter=2000):
-        return admm_qp(
+        m = A.shape[0]
+        eq_scale = jnp.where(
+            jnp.abs(l - u) < 1e-10,
+            cfg.admm_rho_eq_scale,
+            1.0,
+        )
+        y_warm = jnp.zeros(m)
+        d, y, z = admm_qp(
             Q,
             c,
             A,
@@ -210,7 +217,10 @@ class TestAdmmQP:
             mu=cfg.admm_mu,
             tau=cfg.admm_tau,
             adaptive_rho=cfg.admm_adaptive_rho,
+            eq_scale=eq_scale,
+            y_warm=y_warm,
         )
+        return d, y
 
     def test_unconstrained_recovers_exact_solution(self, cfg):
         """min ½‖d‖² + cᵀd  with wide box → d* = -c (unconstrained minimum)."""
