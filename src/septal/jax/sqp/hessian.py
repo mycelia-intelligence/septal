@@ -74,11 +74,7 @@ def bfgs_update(
     sr = s @ r
 
     # BFGS rank-2 update
-    H_new = (
-        H
-        - jnp.outer(Hs, Hs) / (sHs + 1e-30)
-        + jnp.outer(r, r) / (sr + 1e-30)
-    )
+    H_new = H - jnp.outer(Hs, Hs) / (sHs + 1e-30) + jnp.outer(r, r) / (sr + 1e-30)
 
     # Skip update if the step was too small (avoids numerical blow-up)
     skip = (s @ s) < skip_tol
@@ -91,7 +87,7 @@ def bfgs_update(
     # ill-conditioned.  This protects against Hessian deterioration on
     # curved constraint manifolds where the Lagrangian Hessian is indefinite
     # on the full space (positive only on the constraint tangent space).
-    eigs = jnp.linalg.eigvalsh(H_new)          # sorted ascending, O(n³)
+    eigs = jnp.linalg.eigvalsh(H_new)  # sorted ascending, O(n³)
     eig_max = eigs[-1]
     eig_min = jnp.maximum(eigs[0], 1e-30)
     cond = eig_max / eig_min
@@ -136,8 +132,8 @@ def regularised_lagrangian_hessian(
         Symmetrised, PD-regularised Lagrangian Hessian.
     """
     H = lagrangian_hessian(x, lam, p, objective, constraints, n_g)
-    H = 0.5 * (H + H.T)                       # symmetrise against AD drift
-    eigs = jnp.linalg.eigvalsh(H)             # ascending order, O(n³)
+    H = 0.5 * (H + H.T)  # symmetrise against AD drift
+    eigs = jnp.linalg.eigvalsh(H)  # ascending order, O(n³)
     lam_min = eigs[0]
     # Shift: tau = max(hess_reg_min, -lam_min + hess_reg_delta)
     # Applied only when lam_min < hess_reg_delta; otherwise tau = hess_reg_min.
@@ -176,6 +172,7 @@ def lagrangian_hessian(
     jnp.ndarray, shape ``(n, n)``
         ``∇²f(x, p) + Σᵢ λᵢ ∇²gᵢ(x, p)``.
     """
+
     def lagrangian(x_: jnp.ndarray) -> jnp.ndarray:
         f = objective(x_, p)
         if n_g > 0 and constraints is not None:

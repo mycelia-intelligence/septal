@@ -136,79 +136,83 @@ class SQPConfig:
     penalty_init: float = 1.0
     bfgs_init_scale: float = 1.0
     bfgs_skip_tol: float = 1e-10
-    osqp_tol: float = 1e-7       # kept for API compatibility (unused by ADMM)
-    osqp_max_iter: int = 4000   # kept for API compatibility (unused by ADMM)
-    osqp_reg: float = 1e-7      # Hessian diagonal regularisation
-    admm_rho: float = 1.0       # Initial ADMM penalty parameter ρ₀
-    admm_n_iter: int = 500      # fixed ADMM iterations (scan-based, vmappable)
-    admm_sigma: float = 1e-6    # Proximal regularisation on x-update (σ > 0)
-    admm_alpha: float = 1.6     # Over-relaxation parameter (α ∈ (0,2); paper: 1.6)
+    osqp_tol: float = 1e-7  # kept for API compatibility (unused by ADMM)
+    osqp_max_iter: int = 4000  # kept for API compatibility (unused by ADMM)
+    osqp_reg: float = 1e-7  # Hessian diagonal regularisation
+    admm_rho: float = 1.0  # Initial ADMM penalty parameter ρ₀
+    admm_n_iter: int = 500  # fixed ADMM iterations (scan-based, vmappable)
+    admm_sigma: float = 1e-6  # Proximal regularisation on x-update (σ > 0)
+    admm_alpha: float = 1.6  # Over-relaxation parameter (α ∈ (0,2); paper: 1.6)
     admm_rho_min: float = 1e-6  # Lower clip for adaptive ρ
-    admm_rho_max: float = 1e6   # Upper clip for adaptive ρ
+    admm_rho_max: float = 1e6  # Upper clip for adaptive ρ
     admm_rho_update_interval: int = 25  # Iterations between ρ updates
-    admm_adaptive_rho: bool = True      # Enable adaptive ρ updating
-    admm_mu: float = 10.0       # Residual ratio threshold for ρ update (paper: 10)
-    admm_tau: float = 2.0       # ρ scaling factor on update (paper: 2)
-    admm_ruiz_iter: int = 10            # Ruiz diagonal equilibration iterations run
-                                        # before ADMM.  Scales A rows/cols and Q
-                                        # cols to unit ∞-norm so ρ is equally
-                                        # effective for all constraint rows.
-                                        # Set 0 to disable.
-    admm_polish: bool = True            # OSQP-style polishing after ADMM (Eq 30,
-                                        # Stellato et al. 2020).  Guesses the active
-                                        # constraint set from the ADMM dual y and z,
-                                        # then solves a reduced KKT system exactly.
-                                        # Falls back to the ADMM result if the
-                                        # polished solution is worse or non-finite.
-    admm_polish_reg: float = 1e-8       # Regularisation for the polishing KKT system.
-                                        # Added to the (1,1) block as σI (keeps Q PD)
-                                        # and to inactive dual rows as ε (forces ŷᵢ≈0).
-    admm_polish_refine: int = 3         # Iterative refinement steps after the polish
-                                        # solve: Δsol = solve(KKT, rhs − KKT·sol);
-                                        # sol += Δsol.  Corrects the σ/ε error.
-                                        # Set 0 to disable refinement.
-    admm_rho_eq_scale: float = 100.0   # Extra ρ multiplier for equality rows (l==u).
-                                        # Equality rows converge as dual-ascent O(1/k)
-                                        # without this boost; 100× drives them faster.
-    bfgs_max_cond: float = 1e8          # Hessian condition-number reset threshold.
-                                        # When cond(H) > threshold, H is reset to
-                                        # mean(diag(H)) * I to prevent ill-conditioning.
+    admm_adaptive_rho: bool = True  # Enable adaptive ρ updating
+    admm_mu: float = 10.0  # Residual ratio threshold for ρ update (paper: 10)
+    admm_tau: float = 2.0  # ρ scaling factor on update (paper: 2)
+    admm_ruiz_iter: int = 10  # Ruiz diagonal equilibration iterations run
+    # before ADMM.  Scales A rows/cols and Q
+    # cols to unit ∞-norm so ρ is equally
+    # effective for all constraint rows.
+    # Set 0 to disable.
+    admm_polish: bool = True  # OSQP-style polishing after ADMM (Eq 30,
+    # Stellato et al. 2020).  Guesses the active
+    # constraint set from the ADMM dual y and z,
+    # then solves a reduced KKT system exactly.
+    # Falls back to the ADMM result if the
+    # polished solution is worse or non-finite.
+    admm_polish_reg: float = 1e-8  # Regularisation for the polishing KKT system.
+    # Added to the (1,1) block as σI (keeps Q PD)
+    # and to inactive dual rows as ε (forces ŷᵢ≈0).
+    admm_polish_refine: int = 3  # Iterative refinement steps after the polish
+    # solve: Δsol = solve(KKT, rhs − KKT·sol);
+    # sol += Δsol.  Corrects the σ/ε error.
+    # Set 0 to disable refinement.
+    admm_rho_eq_scale: float = 100.0  # Extra ρ multiplier for equality rows (l==u).
+    # Equality rows converge as dual-ascent O(1/k)
+    # without this boost; 100× drives them faster.
+    bfgs_max_cond: float = 1e8  # Hessian condition-number reset threshold.
+    # When cond(H) > threshold, H is reset to
+    # mean(diag(H)) * I to prevent ill-conditioning.
     penalty_decrease_factor: float = 0.999  # Multiplicative shrink applied to the
-                                             # penalty when the iterate is already
-                                             # feasible, preventing penalty blow-up
-                                             # at feasible non-optimal points.
-    use_exact_hessian: bool = True           # Use exact Lagrangian Hessian via
-                                             # jax.hessian instead of BFGS.  More
-                                             # accurate on curved constraint manifolds
-                                             # (e.g. hs006, hs039) but costs O(n²)
-                                             # AD passes per iteration.
+    # penalty when the iterate is already
+    # feasible, preventing penalty blow-up
+    # at feasible non-optimal points.
+    use_exact_hessian: bool = True  # Use exact Lagrangian Hessian via
+    # jax.hessian instead of BFGS.  More
+    # accurate on curved constraint manifolds
+    # (e.g. hs006, hs039) but costs O(n²)
+    # AD passes per iteration.
 
     # ── Non-convex robustness ────────────────────────────────────────────────
 
-    hess_reg_delta: float = 1e-4            # Minimum eigenvalue target for the exact
-                                             # Lagrangian Hessian (use_exact_hessian=True
-                                             # path only).  When the Lagrangian Hessian
-                                             # has eigenvalues below this threshold, an
-                                             # additive shift tau*I is applied to make Q
-                                             # positive definite before the QP subproblem.
-                                             # Set 0 to disable.
-    hess_reg_min: float = 1e-8              # Minimum regularisation always added to the
-                                             # exact Hessian (prevents exactly-zero shift
-                                             # when hess_reg_delta == 0).
+    hess_reg_delta: float = 1e-4  # Minimum eigenvalue target for the exact
+    # Lagrangian Hessian (use_exact_hessian=True
+    # path only).  When the Lagrangian Hessian
+    # has eigenvalues below this threshold, an
+    # additive shift tau*I is applied to make Q
+    # positive definite before the QP subproblem.
+    # Set 0 to disable.
+    hess_reg_min: float = 1e-8  # Minimum regularisation always added to the
+    # exact Hessian (prevents exactly-zero shift
+    # when hess_reg_delta == 0).
 
-    nonmonotone_window: int = 5             # Non-monotone line search memory (Grippo et
-                                             # al. 1986).  The Armijo condition uses the
-                                             # maximum merit over the last M iterates as
-                                             # its reference level, allowing temporary
-                                             # increases that help escape saddle points.
-                                             # M=1 recovers the standard monotone Armijo.
+    nonmonotone_window: int = 5  # Non-monotone line search memory (Grippo et
+    # al. 1986).  The Armijo condition uses the
+    # maximum merit over the last M iterates as
+    # its reference level, allowing temporary
+    # increases that help escape saddle points.
+    # M=1 recovers the standard monotone Armijo.
 
-    stagnation_patience: int = 30           # Number of consecutive near-zero steps
-                                             # before triggering a stagnation reset.
-    stagnation_alpha_tol: float = 1e-6      # Step-length threshold: alpha < tol
-                                             # counts as a stagnated iteration.
-    stagnation_reset_hessian: bool = True   # Reset H to bfgs_init_scale * I on stagnation.
-    stagnation_reset_penalty: bool = True   # Deflate penalty to penalty_init on stagnation.
+    stagnation_patience: int = 30  # Number of consecutive near-zero steps
+    # before triggering a stagnation reset.
+    stagnation_alpha_tol: float = 1e-6  # Step-length threshold: alpha < tol
+    # counts as a stagnated iteration.
+    stagnation_reset_hessian: bool = (
+        True  # Reset H to bfgs_init_scale * I on stagnation.
+    )
+    stagnation_reset_penalty: bool = (
+        True  # Deflate penalty to penalty_init on stagnation.
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -260,10 +264,10 @@ class SQPState(NamedTuple):
     feasibility: jnp.ndarray
     iteration: jnp.ndarray
     converged: jnp.ndarray
-    merit_window: jnp.ndarray       # shape (nonmonotone_window,) — rolling buffer of
-                                    # recent merit values for non-monotone line search.
-    stagnation_count: jnp.ndarray   # integer scalar — consecutive near-zero steps.
-    alpha_last: jnp.ndarray         # scalar — step length accepted on last iteration.
+    merit_window: jnp.ndarray  # shape (nonmonotone_window,) — rolling buffer of
+    # recent merit values for non-monotone line search.
+    stagnation_count: jnp.ndarray  # integer scalar — consecutive near-zero steps.
+    alpha_last: jnp.ndarray  # scalar — step length accepted on last iteration.
 
 
 # ---------------------------------------------------------------------------

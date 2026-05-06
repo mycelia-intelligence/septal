@@ -36,6 +36,7 @@ class TestUnpackResults:
         class FakeSolver:
             def stats(self):
                 return {"return_status": "ok", "success": True, "t_wall_total": 0.1}
+
         return FakeSolver()
 
     def _make_fake_solution(self, f_val):

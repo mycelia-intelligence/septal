@@ -80,7 +80,10 @@ class TestBFGSUpdate:
 class TestLagrangianGrad:
     def test_no_constraints(self):
         """Without constraints, grad_lag = grad_f."""
-        def f(x, p): return jnp.sum(x ** 2)
+
+        def f(x, p):
+            return jnp.sum(x**2)
+
         x = jnp.array([1.0, 2.0])
         p = jnp.zeros(1)
         gl = lagrangian_grad(x, jnp.zeros(0), p, f, None, 0)
@@ -89,8 +92,12 @@ class TestLagrangianGrad:
 
     def test_with_constraint(self):
         """grad_lag = grad_f + J_gᵀ λ."""
-        def f(x, p): return jnp.sum(x ** 2)
-        def g(x, p): return (x[0] + x[1]).reshape(1)
+
+        def f(x, p):
+            return jnp.sum(x**2)
+
+        def g(x, p):
+            return (x[0] + x[1]).reshape(1)
 
         x = jnp.array([1.0, 1.0])
         p = jnp.zeros(1)

@@ -159,7 +159,7 @@ def update_penalty(
     if n_g > 0:
         lam_inf = jnp.max(jnp.abs(lam))
         target = lam_inf + eps
-        penalty_up   = jnp.maximum(target, penalty)
+        penalty_up = jnp.maximum(target, penalty)
         penalty_down = jnp.maximum(target, decrease_factor * penalty)
         return jnp.where(feasibility < eps, penalty_down, penalty_up)
     return penalty

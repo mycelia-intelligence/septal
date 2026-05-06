@@ -74,19 +74,36 @@ def init_sqp_state(
     n = problem.n_decision
     n_g = problem.n_constraints or 0
     x0 = jnp.asarray(x0, dtype=jnp.float64).reshape(n)
-    p = (jnp.asarray(p, dtype=jnp.float64).reshape(problem.n_params)
-         if problem.n_params > 0 else jnp.zeros(0, dtype=jnp.float64))
+    p = (
+        jnp.asarray(p, dtype=jnp.float64).reshape(problem.n_params)
+        if problem.n_params > 0
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
 
     f0 = jnp.asarray(problem.objective(x0, p)).reshape(())
     lam0 = jnp.zeros(n_g, dtype=jnp.float64)
     H0 = cfg.bfgs_init_scale * jnp.eye(n, dtype=jnp.float64)
     gl0 = lagrangian_grad(x0, lam0, p, problem.objective, problem.constraints, n_g)
 
-    lhs = jnp.asarray(problem.constraint_lhs, dtype=jnp.float64).reshape(n_g) if n_g > 0 else jnp.zeros(0, dtype=jnp.float64)
-    rhs = jnp.asarray(problem.constraint_rhs, dtype=jnp.float64).reshape(n_g) if n_g > 0 else jnp.zeros(0, dtype=jnp.float64)
-    g0 = problem.constraints(x0, p).reshape(n_g) if n_g > 0 and problem.constraints is not None else jnp.zeros(0, dtype=jnp.float64)
+    lhs = (
+        jnp.asarray(problem.constraint_lhs, dtype=jnp.float64).reshape(n_g)
+        if n_g > 0
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
+    rhs = (
+        jnp.asarray(problem.constraint_rhs, dtype=jnp.float64).reshape(n_g)
+        if n_g > 0
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
+    g0 = (
+        problem.constraints(x0, p).reshape(n_g)
+        if n_g > 0 and problem.constraints is not None
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
 
-    merit0 = l1_merit(f0, g0, lhs, rhs, jnp.array(cfg.penalty_init, dtype=jnp.float64), n_g)
+    merit0 = l1_merit(
+        f0, g0, lhs, rhs, jnp.array(cfg.penalty_init, dtype=jnp.float64), n_g
+    )
     lb_arr = jnp.asarray(problem.lb, dtype=jnp.float64).reshape(n)
     ub_arr = jnp.asarray(problem.ub, dtype=jnp.float64).reshape(n)
 
@@ -141,8 +158,16 @@ def make_sqp_step(
     n_g = problem.n_constraints or 0
     lb = jnp.asarray(problem.lb, dtype=jnp.float64).reshape(n)
     ub = jnp.asarray(problem.ub, dtype=jnp.float64).reshape(n)
-    lhs = jnp.asarray(problem.constraint_lhs, dtype=jnp.float64).reshape(n_g) if n_g > 0 else jnp.zeros(0, dtype=jnp.float64)
-    rhs = jnp.asarray(problem.constraint_rhs, dtype=jnp.float64).reshape(n_g) if n_g > 0 else jnp.zeros(0, dtype=jnp.float64)
+    lhs = (
+        jnp.asarray(problem.constraint_lhs, dtype=jnp.float64).reshape(n_g)
+        if n_g > 0
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
+    rhs = (
+        jnp.asarray(problem.constraint_rhs, dtype=jnp.float64).reshape(n_g)
+        if n_g > 0
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
 
     def _do_step(state: SQPState) -> SQPState:
         x = state.x
@@ -162,25 +187,50 @@ def make_sqp_step(
 
         # 2. Solve QP subproblem — warm-start ADMM dual from previous multipliers
         d, lam_new = solve_qp_subproblem(
-            state.hessian, grad_f, jac_g, g_val, x, lb, ub, lhs, rhs, n, n_g, cfg,
+            state.hessian,
+            grad_f,
+            jac_g,
+            g_val,
+            x,
+            lb,
+            ub,
+            lhs,
+            rhs,
+            n,
+            n_g,
+            cfg,
             lam_prev=state.lam,
         )
 
         # 3. Penalty update — decrease slowly when already feasible, increase otherwise
         penalty_new = update_penalty(
-            lam_new, state.penalty, n_g, cfg.penalty_eps,
-            state.feasibility, cfg.penalty_decrease_factor,
+            lam_new,
+            state.penalty,
+            n_g,
+            cfg.penalty_eps,
+            state.feasibility,
+            cfg.penalty_decrease_factor,
         )
 
         # 4. Directional derivative estimate and line search
         #    Non-monotone reference: max merit over the last M iterates.
         reference_merit = jnp.max(state.merit_window)
-        dir_deriv = merit_directional_deriv(grad_f, d, g_val, lhs, rhs, penalty_new, n_g)
+        dir_deriv = merit_directional_deriv(
+            grad_f, d, g_val, lhs, rhs, penalty_new, n_g
+        )
         alpha = backtracking_line_search(
-            x, d, p,
-            reference_merit, dir_deriv, penalty_new,
-            problem.objective, problem.constraints,
-            lhs, rhs, n_g, cfg,
+            x,
+            d,
+            p,
+            reference_merit,
+            dir_deriv,
+            penalty_new,
+            problem.objective,
+            problem.constraints,
+            lhs,
+            rhs,
+            n_g,
+            cfg,
         )
 
         # 5. Primal update
@@ -203,13 +253,21 @@ def make_sqp_step(
         #    Exact path: regularise to PD via eigenvalue shift (inertia correction).
         if cfg.use_exact_hessian:
             H_new = regularised_lagrangian_hessian(
-                x_new, lam_new, p, problem.objective, problem.constraints, n_g,
-                cfg.hess_reg_delta, cfg.hess_reg_min,
+                x_new,
+                lam_new,
+                p,
+                problem.objective,
+                problem.constraints,
+                n_g,
+                cfg.hess_reg_delta,
+                cfg.hess_reg_min,
             )
         else:
             s = x_new - x
             y = grad_lag_new - state.grad_lag
-            H_new = bfgs_update(state.hessian, s, y, cfg.bfgs_skip_tol, cfg.bfgs_max_cond)
+            H_new = bfgs_update(
+                state.hessian, s, y, cfg.bfgs_skip_tol, cfg.bfgs_max_cond
+            )
 
         # 9. Stationarity: projected-gradient KKT residual.
         stat_new = jnp.max(jnp.abs(jnp.clip(x_new - grad_lag_new, lb, ub) - x_new))
@@ -237,14 +295,14 @@ def make_sqp_step(
 
         # When stagnating: reset Hessian to scaled identity and deflate penalty.
         H_reset = cfg.bfgs_init_scale * jnp.eye(n, dtype=H_new.dtype)
-        H_final = jnp.where(
-            do_reset & cfg.stagnation_reset_hessian, H_reset, H_new
-        )
+        H_final = jnp.where(do_reset & cfg.stagnation_reset_hessian, H_reset, H_new)
         penalty_reset = jnp.array(cfg.penalty_init, dtype=jnp.float64)
         penalty_final = jnp.where(
             do_reset & cfg.stagnation_reset_penalty, penalty_reset, penalty_new
         )
-        stagnation_final = jnp.where(do_reset, jnp.array(0, dtype=jnp.int32), stagnation_new)
+        stagnation_final = jnp.where(
+            do_reset, jnp.array(0, dtype=jnp.int32), stagnation_new
+        )
 
         return SQPState(
             x=x_new,
@@ -273,9 +331,10 @@ def make_sqp_step(
             state,
         )
         # Ensure converged flag is monotone (True stays True)
-        return final_state._replace(
-            converged=state.converged | new_state.converged
-        ), None
+        return (
+            final_state._replace(converged=state.converged | new_state.converged),
+            None,
+        )
 
     return sqp_step
 
@@ -409,11 +468,13 @@ def select_initial_points(
     lb_np = np.asarray(problem.lb, dtype=np.float64).reshape(n)
     ub_np = np.asarray(problem.ub, dtype=np.float64).reshape(n)
     lb_safe = np.where(
-        np.isfinite(lb_np), lb_np,
+        np.isfinite(lb_np),
+        lb_np,
         np.where(np.isfinite(ub_np), ub_np - inf_fallback, -inf_fallback),
     )
     ub_safe = np.where(
-        np.isfinite(ub_np), ub_np,
+        np.isfinite(ub_np),
+        ub_np,
         np.where(np.isfinite(lb_np), lb_np + inf_fallback, inf_fallback),
     )
 
@@ -424,10 +485,16 @@ def select_initial_points(
     )  # (n_candidates, n)
 
     # ── L1 merit ingredients ─────────────────────────────────────────────────
-    lhs = (jnp.asarray(problem.constraint_lhs, dtype=jnp.float64).reshape(n_g)
-           if n_g > 0 else jnp.zeros(0, dtype=jnp.float64))
-    rhs = (jnp.asarray(problem.constraint_rhs, dtype=jnp.float64).reshape(n_g)
-           if n_g > 0 else jnp.zeros(0, dtype=jnp.float64))
+    lhs = (
+        jnp.asarray(problem.constraint_lhs, dtype=jnp.float64).reshape(n_g)
+        if n_g > 0
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
+    rhs = (
+        jnp.asarray(problem.constraint_rhs, dtype=jnp.float64).reshape(n_g)
+        if n_g > 0
+        else jnp.zeros(0, dtype=jnp.float64)
+    )
     rho = jnp.array(penalty, dtype=jnp.float64)
     p_arr = jnp.asarray(p, dtype=jnp.float64)
 
@@ -507,9 +574,11 @@ def make_batch_solver(
         return sqp_solve_scan(problem, x0, p, cfg)
 
     if mode == "vmap":
+
         @jax.jit
         def _solve_vmap(x0_batch: jnp.ndarray, p_batch: jnp.ndarray) -> SQPState:
             return jax.vmap(_solve_single)(x0_batch, p_batch)
+
         return _solve_vmap
     elif mode == "pmap":
         return jax.pmap(_solve_single)
@@ -594,9 +663,9 @@ def batch_state_to_result(
 
     g_final = None
     if n_g > 0 and problem.constraints is not None:
-        g_final = jax.vmap(
-            lambda x, p: problem.constraints(x, p)
-        )(state.x, state.params_p)
+        g_final = jax.vmap(lambda x, p: problem.constraints(x, p))(
+            state.x, state.params_p
+        )
 
     msg = "batch solve complete"
     return SQPResult(

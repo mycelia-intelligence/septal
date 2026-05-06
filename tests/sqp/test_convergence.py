@@ -9,8 +9,13 @@ from septal.jax.sqp.schema import SQPConfig
 
 def make_quadratic_problem():
     """Simple quadratic min ½‖x‖² s.t. x[0] >= 1 → x*=[1,0], λ*=1."""
-    def f(x, p): return 0.5 * jnp.sum(x ** 2)
-    def g(x, p): return (1.0 - x[0]).reshape(1)  # g<=0 via rhs=0
+
+    def f(x, p):
+        return 0.5 * jnp.sum(x**2)
+
+    def g(x, p):
+        return (1.0 - x[0]).reshape(1)  # g<=0 via rhs=0
+
     lhs = jnp.array([-jnp.inf])
     rhs = jnp.array([0.0])
     return f, g, lhs, rhs
@@ -49,7 +54,9 @@ class TestKKTResiduals:
         assert float(stat) > 1e-3
 
     def test_no_constraints_feasibility_zero(self):
-        def f(x, p): return 0.5 * jnp.sum(x ** 2)
+        def f(x, p):
+            return 0.5 * jnp.sum(x**2)
+
         x = jnp.array([0.0, 0.0])
         p = jnp.zeros(0)
         stat, feas = kkt_residuals(x, jnp.zeros(0), p, f, None, None, None, 0)

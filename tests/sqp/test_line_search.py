@@ -44,14 +44,15 @@ class TestConstraintViolation:
         assert float(constraint_violation(g, lhs, rhs)) == pytest.approx(1.0)
 
     def test_zero_for_empty(self):
-        assert float(constraint_violation(jnp.zeros(0), jnp.zeros(0), jnp.zeros(0))) == 0.0
+        assert (
+            float(constraint_violation(jnp.zeros(0), jnp.zeros(0), jnp.zeros(0))) == 0.0
+        )
 
 
 class TestL1Merit:
     def test_no_constraints(self):
         merit = l1_merit(
-            jnp.array(3.0), jnp.zeros(0), jnp.zeros(0), jnp.zeros(0),
-            jnp.array(10.0), 0
+            jnp.array(3.0), jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.array(10.0), 0
         )
         assert float(merit) == pytest.approx(3.0)
 
@@ -103,7 +104,9 @@ class TestUpdatePenalty:
 class TestBacktrackingLineSearch:
     def test_decreasing_quadratic(self, cfg):
         """Line search on f(x) = ‖x‖² with direction d = -grad_f."""
-        def objective(x, p): return jnp.sum(x ** 2)
+
+        def objective(x, p):
+            return jnp.sum(x**2)
 
         x = jnp.array([1.0, 1.0])
         d = jnp.array([-2.0, -2.0])  # -grad_f at x
@@ -114,37 +117,75 @@ class TestBacktrackingLineSearch:
         dir_deriv = jnp.array(-8.0)  # grad_f @ d = [2,2]@[-2,-2]
 
         alpha = backtracking_line_search(
-            x, d, p, merit0, dir_deriv,
-            jnp.array(0.0), objective, None,
-            jnp.zeros(0), jnp.zeros(0), 0, cfg,
+            x,
+            d,
+            p,
+            merit0,
+            dir_deriv,
+            jnp.array(0.0),
+            objective,
+            None,
+            jnp.zeros(0),
+            jnp.zeros(0),
+            0,
+            cfg,
         )
         # Armijo: f(x + alpha*d) <= f(x) + c*alpha*dir_deriv
         x_new = x + alpha * d
         f_new = objective(x_new, p)
-        assert float(f_new) <= float(merit0) + cfg.line_search_c * float(alpha) * float(dir_deriv) + 1e-10
+        assert (
+            float(f_new)
+            <= float(merit0)
+            + cfg.line_search_c * float(alpha) * float(dir_deriv)
+            + 1e-10
+        )
 
     def test_step_positive(self, cfg):
-        def objective(x, p): return jnp.sum(x ** 2)
+        def objective(x, p):
+            return jnp.sum(x**2)
+
         x = jnp.array([0.5])
         d = jnp.array([-1.0])
         p = jnp.zeros(0)
         alpha = backtracking_line_search(
-            x, d, p, jnp.array(0.25), jnp.array(-1.0),
-            jnp.array(0.0), objective, None,
-            jnp.zeros(0), jnp.zeros(0), 0, cfg,
+            x,
+            d,
+            p,
+            jnp.array(0.25),
+            jnp.array(-1.0),
+            jnp.array(0.0),
+            objective,
+            None,
+            jnp.zeros(0),
+            jnp.zeros(0),
+            0,
+            cfg,
         )
         assert float(alpha) > 0.0
 
     def test_jit_compatible(self, cfg):
-        def objective(x, p): return jnp.sum(x ** 2)
+        def objective(x, p):
+            return jnp.sum(x**2)
+
         x = jnp.array([1.0, 1.0])
         d = jnp.array([-1.0, -1.0])
         p = jnp.zeros(0)
 
-        fn = jax.jit(lambda x, d: backtracking_line_search(
-            x, d, p, jnp.array(2.0), jnp.array(-4.0),
-            jnp.array(0.0), objective, None,
-            jnp.zeros(0), jnp.zeros(0), 0, cfg,
-        ))
+        fn = jax.jit(
+            lambda x, d: backtracking_line_search(
+                x,
+                d,
+                p,
+                jnp.array(2.0),
+                jnp.array(-4.0),
+                jnp.array(0.0),
+                objective,
+                None,
+                jnp.zeros(0),
+                jnp.zeros(0),
+                0,
+                cfg,
+            )
+        )
         alpha = fn(x, d)
         assert float(alpha) > 0.0

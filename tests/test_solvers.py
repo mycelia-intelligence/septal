@@ -12,6 +12,7 @@ from septal.casadax.utilities import generate_initial_guess
 # CasadiSolver
 # ---------------------------------------------------------------------------
 
+
 class TestCasadiSolverUnconstrained:
     """Minimise sum(x^2) on [-2, 2]^2 — optimum at x*=(0,0), f*=0."""
 
@@ -23,7 +24,7 @@ class TestCasadiSolverUnconstrained:
         bounds = [lb, ub]
 
         def _f(x):
-            return jnp.sum(x ** 2).reshape(1, 1)
+            return jnp.sum(x**2).reshape(1, 1)
 
         objective_cb = casadify_reverse(_f, n_d)
         solver = CasadiSolver(solver_cfg, objective_cb, bounds)
@@ -32,6 +33,7 @@ class TestCasadiSolverUnconstrained:
 
     def test_returns_solve_result(self, setup):
         from septal.casadax.schema import SolveResult
+
         solver, guesses = setup
         result = solver.solve(guesses)
         assert isinstance(result, SolveResult)
@@ -63,7 +65,7 @@ class TestCasadiSolverConstrained:
         bounds = [lb, ub]
 
         def _f(x):
-            return jnp.sum(x ** 2).reshape(1, 1)
+            return jnp.sum(x**2).reshape(1, 1)
 
         # g(x) = 1 - x[0] - x[1] <= 0  (equivalent to x[0]+x[1] >= 1)
         def _g(x):
@@ -76,7 +78,9 @@ class TestCasadiSolverConstrained:
         rhs = jnp.zeros((1, 1))
 
         solver = CasadiSolver(
-            solver_cfg, objective_cb, bounds,
+            solver_cfg,
+            objective_cb,
+            bounds,
             constraints_fn=constraint_cb,
             constraint_lhs=lhs,
             constraint_rhs=rhs,
@@ -116,6 +120,7 @@ class TestCasadiSolverEdgeCases:
         result = solver.solve(guesses)
         # Whether or not IPOPT "succeeds", we get a SolveResult back
         from septal.casadax.schema import SolveResult
+
         assert isinstance(result, SolveResult)
 
     def test_initial_guess_shape(self, solver_cfg):
@@ -137,6 +142,7 @@ class TestCasadiSolverEdgeCases:
 # JaxSolver
 # ---------------------------------------------------------------------------
 
+
 class TestJaxSolver:
     """Minimise sum(x^2) on [0, 1]^3 — optimum at x*=0, f*=0."""
 
@@ -148,7 +154,7 @@ class TestJaxSolver:
         bounds = [lb, ub]
 
         def _f(x):
-            return jnp.sum(x ** 2)
+            return jnp.sum(x**2)
 
         solver = JaxSolver(solver_cfg, _f, bounds)
         guesses = generate_initial_guess(solver_cfg.n_starts, n_d, bounds)
@@ -156,6 +162,7 @@ class TestJaxSolver:
 
     def test_returns_solve_result(self, setup):
         from septal.casadax.schema import SolveResult
+
         solver, guesses = setup
         result = solver.solve(guesses)
         assert isinstance(result, SolveResult)
@@ -169,20 +176,20 @@ class TestJaxSolver:
     def test_initial_guess_shape(self, solver_cfg):
         n_d = 2
         bounds = [jnp.zeros(n_d), jnp.ones(n_d)]
-        solver = JaxSolver(solver_cfg, lambda x: jnp.sum(x ** 2), bounds)
+        solver = JaxSolver(solver_cfg, lambda x: jnp.sum(x**2), bounds)
         guesses = solver.initial_guess()
         assert guesses.shape == (solver_cfg.n_starts, n_d)
 
     def test_get_status_within_tolerance(self, solver_cfg):
         n_d = 2
         bounds = [jnp.zeros(n_d), jnp.ones(n_d)]
-        solver = JaxSolver(solver_cfg, lambda x: jnp.sum(x ** 2), bounds)
+        solver = JaxSolver(solver_cfg, lambda x: jnp.sum(x**2), bounds)
         # Error well below tolerance → success
         assert solver.get_status(jnp.array(1e-8))
 
     def test_get_status_above_tolerance(self, solver_cfg):
         n_d = 2
         bounds = [jnp.zeros(n_d), jnp.ones(n_d)]
-        solver = JaxSolver(solver_cfg, lambda x: jnp.sum(x ** 2), bounds)
+        solver = JaxSolver(solver_cfg, lambda x: jnp.sum(x**2), bounds)
         # Error well above tolerance → failure
         assert not solver.get_status(jnp.array(1.0))

@@ -46,7 +46,9 @@ class SolverFactory:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_problem(cls, cfg: Any, solver_type: str, problem: NLPProblem) -> SolverFactory:
+    def from_problem(
+        cls, cfg: Any, solver_type: str, problem: NLPProblem
+    ) -> SolverFactory:
         """Build a factory and construct the solver from an :class:`~septal.casadax.schema.NLPProblem`.
 
         Parameters
@@ -66,7 +68,9 @@ class SolverFactory:
         factory = cls(cfg, solver_type)
         factory.load_objective(problem.objective)
         factory.load_bounds(problem.bounds)
-        factory.load_constraints(problem.constraints, problem.constraint_lhs, problem.constraint_rhs)
+        factory.load_constraints(
+            problem.constraints, problem.constraint_lhs, problem.constraint_rhs
+        )
         factory.construct_solver()
         return factory
 
@@ -147,7 +151,9 @@ class SolverFactory:
         elif self.solver_type == "box_constrained_nlp":
             self.solver = JaxSolver(self.cfg, self.objective_func, self.bounds)
         else:
-            raise NotImplementedError(f"Solver type '{self.solver_type}' is not implemented.")
+            raise NotImplementedError(
+                f"Solver type '{self.solver_type}' is not implemented."
+            )
 
     # ------------------------------------------------------------------
     # Solve interface

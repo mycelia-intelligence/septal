@@ -46,7 +46,7 @@ import jax.numpy as jnp
 
 from septal.jax.sqp.schema import SQPConfig
 
-_INF_VAL = 1e10   # finite stand-in for ±∞ in constraint bounds
+_INF_VAL = 1e10  # finite stand-in for ±∞ in constraint bounds
 
 
 # ---------------------------------------------------------------------------
@@ -115,24 +115,22 @@ def ruiz_equilibration(
 
         # --- row scaling of A (makes ‖A_s[i,:]‖∞ → 1) -------------------
         row_norms = jnp.maximum(jnp.max(jnp.abs(A_s), axis=1), eps)
-        rs = 1.0 / jnp.sqrt(row_norms)                  # (m,)
+        rs = 1.0 / jnp.sqrt(row_norms)  # (m,)
         A_s = A_s * rs[:, None]
         e = e * rs
 
         # --- column scaling of [Q; A] (makes ‖col‖∞ → 1) ----------------
-        col_norms_A = jnp.max(jnp.abs(A_s), axis=0)     # (n,)
-        col_norms_Q = jnp.max(jnp.abs(Q_s), axis=0)     # (n,) — Q symmetric
+        col_norms_A = jnp.max(jnp.abs(A_s), axis=0)  # (n,)
+        col_norms_Q = jnp.max(jnp.abs(Q_s), axis=0)  # (n,) — Q symmetric
         col_norms = jnp.maximum(jnp.maximum(col_norms_A, col_norms_Q), eps)
-        cs = 1.0 / jnp.sqrt(col_norms)                  # (n,)
+        cs = 1.0 / jnp.sqrt(col_norms)  # (n,)
         A_s = A_s * cs[None, :]
         Q_s = Q_s * cs[:, None] * cs[None, :]
         d = d * cs
 
         return (Q_s, A_s, d, e), None
 
-    (Q_s, A_s, d, e), _ = jax.lax.scan(
-        _step, (Q, A, d0, e0), None, length=n_iter
-    )
+    (Q_s, A_s, d, e), _ = jax.lax.scan(_step, (Q, A, d0, e0), None, length=n_iter)
 
     c_s = c * d
     l_s = l * e
@@ -270,7 +268,7 @@ def admm_qp(
     # With per-row eq_scale: M = Q + σI + ρ · Aᵀ diag(eq_scale) A
     #   AtA_scaled = Aᵀ diag(eq_scale) A = (A * eq_scale[:,None])ᵀ A
     Q_sigma = Q + sigma * jnp.eye(n)
-    AtA_scaled = (A * eq_scale[:, None]).T @ A   # (n, n) — precomputed once
+    AtA_scaled = (A * eq_scale[:, None]).T @ A  # (n, n) — precomputed once
 
     rho0 = jnp.array(rho_init)
     M0 = Q_sigma + rho0 * AtA_scaled
@@ -278,14 +276,12 @@ def admm_qp(
     # ADMM variables: x=step direction, z=auxiliary, y=dual (warm-started)
     x0 = jnp.zeros(n)
     z0 = jnp.zeros_like(l)
-    y0 = y_warm                     # warm-start from previous SQP multipliers
+    y0 = y_warm  # warm-start from previous SQP multipliers
 
     # Scan state: (x, z, y, rho, M, z_prev, iter)
     init_state = (x0, z0, y0, rho0, M0, z0, jnp.array(0, dtype=jnp.int32))
 
-    def admm_step(
-        state: tuple, _: None
-    ) -> tuple[tuple, None]:
+    def admm_step(state: tuple, _: None) -> tuple[tuple, None]:
         x, z, y, rho, M, z_prev, k = state
 
         # Per-row effective rho  ρ_vec = ρ · eq_scale
@@ -310,25 +306,26 @@ def admm_qp(
         # ---- adaptive ρ (Python-level branch — static at trace time) -
         k_new = k + 1
         if adaptive_rho:
-            should_update = (jnp.mod(k_new, rho_update_interval) == 0)
+            should_update = jnp.mod(k_new, rho_update_interval) == 0
 
             r_prim = jnp.linalg.norm(Ax_new - z_new)
             # Dual residual uses unscaled rho to keep the adaptive logic
             # independent of the equality-row boost factor.
             r_dual = jnp.linalg.norm(rho * (A.T @ (z_new - z_prev)))
 
-            rho_up   = jnp.minimum(rho * tau, rho_max)
+            rho_up = jnp.minimum(rho * tau, rho_max)
             rho_down = jnp.maximum(rho / tau, rho_min)
             rho_candidate = jnp.where(
-                r_prim > mu * r_dual, rho_up,
+                r_prim > mu * r_dual,
+                rho_up,
                 jnp.where(r_dual > mu * r_prim, rho_down, rho),
             )
             rho_new = jnp.where(should_update, rho_candidate, rho)
             # M changes only when rho changes; eq_scale is absorbed in AtA_scaled.
-            M_new   = jnp.where(should_update, Q_sigma + rho_new * AtA_scaled, M)
+            M_new = jnp.where(should_update, Q_sigma + rho_new * AtA_scaled, M)
         else:
             rho_new = rho
-            M_new   = M
+            M_new = M
 
         return (x_new, z_new, y_new, rho_new, M_new, z_new, k_new), None
 
@@ -427,29 +424,29 @@ def polish_qp(
     n = Q.shape[0]
 
     # --- Active-set classification (OSQP §3.2 criterion) ------------------
-    is_eq = l == u                                          # (m,) bool
-    lower_act = ((z_admm - l) < -y_admm) | is_eq           # lower bound active
-    upper_act = ((u - z_admm) < y_admm) & ~is_eq           # upper bound active
-    is_act = lower_act | upper_act                          # (m,) bool
+    is_eq = l == u  # (m,) bool
+    lower_act = ((z_admm - l) < -y_admm) | is_eq  # lower bound active
+    upper_act = ((u - z_admm) < y_admm) & ~is_eq  # upper bound active
+    is_act = lower_act | upper_act  # (m,) bool
 
-    is_act_f = is_act.astype(Q.dtype)                       # float mask
+    is_act_f = is_act.astype(Q.dtype)  # float mask
 
     # b_A: the bound value for active rows (l if lower-active, u otherwise)
-    b_A = jnp.where(lower_act, l, u)                       # (m,)
+    b_A = jnp.where(lower_act, l, u)  # (m,)
 
     # --- Fixed-size (n+m)×(n+m) KKT matrix assembly ----------------------
     # top-left:  Q + σI
     # top-right: A^T · diag(is_act)   — only active cols contribute to stat.
     # bot-left:  diag(is_act) · A     — only active rows enforced
     # bot-right: diag((1-is_act)·ε)   — tiny diag forces inactive ŷ ≈ 0
-    top_left  = Q + sigma * jnp.eye(n, dtype=Q.dtype)       # (n, n)
-    top_right = A.T * is_act_f[None, :]                     # (n, m)
-    bot_left  = A * is_act_f[:, None]                       # (m, n)
-    bot_right = jnp.diag((1.0 - is_act_f) * eps)           # (m, m)
+    top_left = Q + sigma * jnp.eye(n, dtype=Q.dtype)  # (n, n)
+    top_right = A.T * is_act_f[None, :]  # (n, m)
+    bot_left = A * is_act_f[:, None]  # (m, n)
+    bot_right = jnp.diag((1.0 - is_act_f) * eps)  # (m, m)
 
-    top = jnp.concatenate([top_left, top_right], axis=1)   # (n, n+m)
-    bot = jnp.concatenate([bot_left, bot_right], axis=1)   # (m, n+m)
-    KKT = jnp.concatenate([top, bot], axis=0)              # (n+m, n+m)
+    top = jnp.concatenate([top_left, top_right], axis=1)  # (n, n+m)
+    bot = jnp.concatenate([bot_left, bot_right], axis=1)  # (m, n+m)
+    KKT = jnp.concatenate([top, bot], axis=0)  # (n+m, n+m)
 
     rhs = jnp.concatenate([-c, jnp.where(is_act, b_A, 0.0)])  # (n+m,)  avoid 0*inf=NaN
 
@@ -525,7 +522,7 @@ def solve_qp_subproblem(
     # rho to avoid the O(1/k) dual-ascent convergence rate on those rows.
     # After Ruiz, l_s[i]==u_s[i] iff l[i]==u[i] (positive scaling preserves ==).
     if n_g > 0:
-        is_eq_gc = l_all[:n_g] == u_all[:n_g]   # equality among general constraints
+        is_eq_gc = l_all[:n_g] == u_all[:n_g]  # equality among general constraints
         is_eq = jnp.concatenate([is_eq_gc, jnp.zeros(n, dtype=jnp.bool_)])
     else:
         is_eq = jnp.zeros(m, dtype=jnp.bool_)
@@ -540,7 +537,11 @@ def solve_qp_subproblem(
     y_warm = y_warm_orig / jnp.maximum(e_scale, 1e-30)
 
     d_s, y_s, z_s = admm_qp(
-        Q, c, A, l_all, u_all,
+        Q,
+        c,
+        A,
+        l_all,
+        u_all,
         rho_init=cfg.admm_rho,
         sigma=cfg.admm_sigma,
         alpha=cfg.admm_alpha,
@@ -564,14 +565,20 @@ def solve_qp_subproblem(
         # For problems with no finite-bound active constraints (e.g. unconstrained
         # problems where all bounds are ±∞), polishing reduces to a pure Newton
         # step -(Q+σI)⁻¹c which diverges for non-convex Q — hence the gate.
-        _is_eq_pre  = l_all == u_all
-        _lower_pre  = ((z_s - l_all) < -y_s) | _is_eq_pre
-        _upper_pre  = ((u_all - z_s) < y_s) & ~_is_eq_pre
+        _is_eq_pre = l_all == u_all
+        _lower_pre = ((z_s - l_all) < -y_s) | _is_eq_pre
+        _upper_pre = ((u_all - z_s) < y_s) & ~_is_eq_pre
         _has_active = (_lower_pre | _upper_pre).any()
 
         d_pol_s, y_pol_s = polish_qp(
-            Q, c, A, l_all, u_all,
-            d_s, y_s, z_s,
+            Q,
+            c,
+            A,
+            l_all,
+            u_all,
+            d_s,
+            y_s,
+            z_s,
             sigma=cfg.admm_polish_reg,
             eps=cfg.admm_polish_reg,
             n_refine=cfg.admm_polish_refine,
@@ -617,7 +624,7 @@ def solve_qp_subproblem(
     lam_g = y[:n_g] if n_g > 0 else jnp.zeros(0)
 
     # Guard against NaN/Inf from a numerically ill-conditioned QP.
-    d     = jnp.where(jnp.isfinite(d).all(),     d,     jnp.zeros(n))
+    d = jnp.where(jnp.isfinite(d).all(), d, jnp.zeros(n))
     lam_g = jnp.where(jnp.isfinite(lam_g).all(), lam_g, jnp.zeros(n_g))
 
     return d, lam_g

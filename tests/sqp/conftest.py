@@ -28,6 +28,7 @@ def unconstrained_quadratic():
 
     With lb=-2, ub=2 and p within bounds: x* = p, f* = 0.
     """
+
     def f(x, p):
         return 0.5 * jnp.sum((x - p) ** 2)
 
@@ -48,8 +49,9 @@ def constrained_quadratic():
 
     Optimal: x* = [p[0], 0] when p[0] >= 0, x* = [0, 0] otherwise.
     """
+
     def f(x, p):
-        return 0.5 * jnp.sum(x ** 2)
+        return 0.5 * jnp.sum(x**2)
 
     def g(x, p):
         # g(x, p) = p[0] - x[0] <= 0  →  lhs=-inf, rhs=0
@@ -75,8 +77,9 @@ def constrained_quadratic_equality():
 
     Optimal: x* = [p[0]/2, p[0]/2], f* = p[0]²/4.
     """
+
     def f(x, p):
-        return 0.5 * jnp.sum(x ** 2)
+        return 0.5 * jnp.sum(x**2)
 
     def g(x, p):
         return (x[0] + x[1] - p[0]).reshape(1)

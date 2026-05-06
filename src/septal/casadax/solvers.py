@@ -220,9 +220,7 @@ class CasadiSolver(BaseSolver):
                         self.constraint_rhs,
                     )
                 else:
-                    solver, sol = _ipopt_no_gcons(
-                        self.objective_fn, self.bounds, x0
-                    )
+                    solver, sol = _ipopt_no_gcons(self.objective_fn, self.bounds, x0)
                 if solver.stats()["success"]:
                     solutions.append((solver, sol))
                     if np.array(sol["f"]) <= 0:
@@ -259,7 +257,10 @@ class CasadiSolver(BaseSolver):
                 )
             logger.warning("CasadiSolver: %s", message)
 
-        if t_wall >= getattr(self.cfg, "max_solution_time", float("inf")) and not success:
+        if (
+            t_wall >= getattr(self.cfg, "max_solution_time", float("inf"))
+            and not success
+        ):
             logger.warning("CasadiSolver: max_solution_time exceeded (%.1f s)", t_wall)
 
         return SolveResult(
@@ -332,7 +333,10 @@ class JaxSolver(BaseSolver):
         )
 
         _, (_, solutions) = lax.scan(
-            lambda carry, x: (None, partial_solver(init=None, xs=x, objective_params=args)),
+            lambda carry, x: (
+                None,
+                partial_solver(init=None, xs=x, objective_params=args),
+            ),
             init=None,
             xs=initial_guesses,
         )

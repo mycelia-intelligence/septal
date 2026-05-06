@@ -8,7 +8,9 @@ from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult, SQ
 
 class TestParametricNLPProblem:
     def test_construction_minimal(self):
-        def f(x, p): return jnp.sum(x ** 2)
+        def f(x, p):
+            return jnp.sum(x**2)
+
         prob = ParametricNLPProblem(
             objective=f,
             bounds=[jnp.zeros(3), jnp.ones(3)],
@@ -21,8 +23,12 @@ class TestParametricNLPProblem:
         assert not prob.has_constraints
 
     def test_n_constraints_inferred_from_rhs(self):
-        def f(x, p): return jnp.sum(x ** 2)
-        def g(x, p): return x[:2]
+        def f(x, p):
+            return jnp.sum(x**2)
+
+        def g(x, p):
+            return x[:2]
+
         prob = ParametricNLPProblem(
             objective=f,
             bounds=[jnp.zeros(3), jnp.ones(3)],
@@ -38,7 +44,10 @@ class TestParametricNLPProblem:
     def test_bounds_properties(self):
         lb = jnp.array([-1.0, -2.0])
         ub = jnp.array([1.0, 2.0])
-        def f(x, p): return jnp.sum(x)
+
+        def f(x, p):
+            return jnp.sum(x)
+
         prob = ParametricNLPProblem(
             objective=f, bounds=[lb, ub], n_decision=2, n_params=0
         )
@@ -46,10 +55,15 @@ class TestParametricNLPProblem:
         assert jnp.allclose(prob.ub, ub)
 
     def test_n_constraints_explicit(self):
-        def f(x, p): return jnp.sum(x)
+        def f(x, p):
+            return jnp.sum(x)
+
         prob = ParametricNLPProblem(
-            objective=f, bounds=[jnp.zeros(2), jnp.ones(2)],
-            n_decision=2, n_params=1, n_constraints=5,
+            objective=f,
+            bounds=[jnp.zeros(2), jnp.ones(2)],
+            n_decision=2,
+            n_params=1,
+            n_constraints=5,
         )
         assert prob.n_constraints == 5
 
@@ -73,6 +87,7 @@ class TestSQPState:
     def test_is_namedtuple_pytree(self):
         """SQPState must be a NamedTuple (JAX pytree)."""
         import jax
+
         n, n_g = 3, 2
         state = SQPState(
             x=jnp.zeros(n),

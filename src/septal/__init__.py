@@ -20,10 +20,19 @@ from septal.casadax import (
 from septal.jax import sqp
 
 __all__ = [
-    "NLPProblem", "SolveResult",
-    "JaxCasADiEvaluator", "JaxCallbackForward", "JaxCallbackReverse",
-    "casadify", "casadify_forward", "casadify_reverse",
-    "BaseSolver", "CasadiSolver", "JaxSolver",
-    "SolverFactory", "generate_initial_guess",
-    "sqp", "casadax",
+    "NLPProblem",
+    "SolveResult",
+    "JaxCasADiEvaluator",
+    "JaxCallbackForward",
+    "JaxCallbackReverse",
+    "casadify",
+    "casadify_forward",
+    "casadify_reverse",
+    "BaseSolver",
+    "CasadiSolver",
+    "JaxSolver",
+    "SolverFactory",
+    "generate_initial_guess",
+    "sqp",
+    "casadax",
 ]

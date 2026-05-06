@@ -19,7 +19,9 @@ class TestNLPProblem:
         assert problem.n_decision == 3
 
     def test_n_decision_explicit_override(self, simple_bounds, quadratic_objective):
-        problem = NLPProblem(objective=quadratic_objective, bounds=simple_bounds, n_decision=2)
+        problem = NLPProblem(
+            objective=quadratic_objective, bounds=simple_bounds, n_decision=2
+        )
         assert problem.n_decision == 2
 
     def test_lb_ub_properties(self, simple_bounds, quadratic_objective):
@@ -31,7 +33,9 @@ class TestNLPProblem:
         problem = NLPProblem(objective=quadratic_objective, bounds=simple_bounds)
         assert not problem.has_constraints
 
-    def test_has_constraints_true(self, simple_bounds, quadratic_objective, simple_constraint):
+    def test_has_constraints_true(
+        self, simple_bounds, quadratic_objective, simple_constraint
+    ):
         problem = NLPProblem(
             objective=quadratic_objective,
             bounds=simple_bounds,
@@ -42,7 +46,9 @@ class TestNLPProblem:
         assert problem.has_constraints
 
     def test_custom_n_starts(self, simple_bounds, quadratic_objective):
-        problem = NLPProblem(objective=quadratic_objective, bounds=simple_bounds, n_starts=10)
+        problem = NLPProblem(
+            objective=quadratic_objective, bounds=simple_bounds, n_starts=10
+        )
         assert problem.n_starts == 10
 
 
