@@ -251,9 +251,7 @@ class CasadiSolver(BaseSolver):
 
         if not success:
             if constraints is not None:
-                objective = float(
-                    np.maximum(objective, np.max(np.abs(constraints)))
-                )
+                objective = float(np.maximum(objective, np.max(np.abs(constraints))))
             logger.warning("CasadiSolver: %s", message)
 
         if (
