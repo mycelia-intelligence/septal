@@ -12,8 +12,9 @@ NLP standard form:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -44,11 +45,11 @@ class NLPProblem:
     """
 
     objective: Callable
-    bounds: List[Any]
-    constraints: Optional[Callable] = None
-    constraint_lhs: Optional[Any] = None
-    constraint_rhs: Optional[Any] = None
-    n_decision: Optional[int] = None
+    bounds: list[Any]
+    constraints: Callable | None = None
+    constraint_lhs: Any | None = None
+    constraint_rhs: Any | None = None
+    n_decision: int | None = None
     n_starts: int = 5
 
     def __post_init__(self) -> None:
@@ -95,7 +96,7 @@ class SolveResult:
     success: bool
     objective: Any
     decision_variables: Any
-    constraints: Optional[Any] = None
+    constraints: Any | None = None
     message: str = ""
     timing: float = 0.0
     n_solves: int = 0

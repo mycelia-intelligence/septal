@@ -31,6 +31,8 @@ All operations are pure JAX — no Python control flow on traced values.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import jax
 import jax.numpy as jnp
 
@@ -74,11 +76,7 @@ def bfgs_update(
     sr = s @ r
 
     # BFGS rank-2 update
-    H_new = (
-        H
-        - jnp.outer(Hs, Hs) / (sHs + 1e-30)
-        + jnp.outer(r, r) / (sr + 1e-30)
-    )
+    H_new = H - jnp.outer(Hs, Hs) / (sHs + 1e-30) + jnp.outer(r, r) / (sr + 1e-30)
 
     # Skip update if the step was too small (avoids numerical blow-up)
     skip = (s @ s) < skip_tol
@@ -91,7 +89,7 @@ def bfgs_update(
     # ill-conditioned.  This protects against Hessian deterioration on
     # curved constraint manifolds where the Lagrangian Hessian is indefinite
     # on the full space (positive only on the constraint tangent space).
-    eigs = jnp.linalg.eigvalsh(H_new)          # sorted ascending, O(n³)
+    eigs = jnp.linalg.eigvalsh(H_new)  # sorted ascending, O(n³)
     eig_max = eigs[-1]
     eig_min = jnp.maximum(eigs[0], 1e-30)
     cond = eig_max / eig_min
@@ -105,8 +103,8 @@ def regularised_lagrangian_hessian(
     x: jnp.ndarray,
     lam: jnp.ndarray,
     p: jnp.ndarray,
-    objective: callable,
-    constraints: callable,
+    objective: Callable,
+    constraints: Callable | None,
     n_g: int,
     hess_reg_delta: float = 1e-4,
     hess_reg_min: float = 1e-8,
@@ -136,8 +134,8 @@ def regularised_lagrangian_hessian(
         Symmetrised, PD-regularised Lagrangian Hessian.
     """
     H = lagrangian_hessian(x, lam, p, objective, constraints, n_g)
-    H = 0.5 * (H + H.T)                       # symmetrise against AD drift
-    eigs = jnp.linalg.eigvalsh(H)             # ascending order, O(n³)
+    H = 0.5 * (H + H.T)  # symmetrise against AD drift
+    eigs = jnp.linalg.eigvalsh(H)  # ascending order, O(n³)
     lam_min = eigs[0]
     # Shift: tau = max(hess_reg_min, -lam_min + hess_reg_delta)
     # Applied only when lam_min < hess_reg_delta; otherwise tau = hess_reg_min.
@@ -150,8 +148,8 @@ def lagrangian_hessian(
     x: jnp.ndarray,
     lam: jnp.ndarray,
     p: jnp.ndarray,
-    objective: callable,
-    constraints: callable,
+    objective: Callable,
+    constraints: Callable | None,
     n_g: int,
 ) -> jnp.ndarray:
     """Compute the exact Lagrangian Hessian ∇²_xx L(x, λ, p) via ``jax.hessian``.
@@ -176,22 +174,23 @@ def lagrangian_hessian(
     jnp.ndarray, shape ``(n, n)``
         ``∇²f(x, p) + Σᵢ λᵢ ∇²gᵢ(x, p)``.
     """
+
     def lagrangian(x_: jnp.ndarray) -> jnp.ndarray:
         f = objective(x_, p)
         if n_g > 0 and constraints is not None:
             g = constraints(x_, p)
-            return f + lam @ g
-        return f
+            return f + lam @ g  # type: ignore[no-any-return]
+        return f  # type: ignore[no-any-return]
 
-    return jax.hessian(lagrangian)(x)
+    return jax.hessian(lagrangian)(x)  # type: ignore[no-any-return]
 
 
 def lagrangian_grad(
     x: jnp.ndarray,
     lam: jnp.ndarray,
     p: jnp.ndarray,
-    objective: callable,
-    constraints: callable,
+    objective: Callable,
+    constraints: Callable | None,
     n_g: int,
 ) -> jnp.ndarray:
     """Compute the Lagrangian gradient ∇_x L(x, λ, p).
@@ -219,5 +218,5 @@ def lagrangian_grad(
     grad_f = jax.grad(objective)(x, p)
     if n_g > 0 and constraints is not None:
         jac_g = jax.jacfwd(constraints)(x, p)  # (n_g, n)
-        return grad_f + jac_g.T @ lam
-    return grad_f
+        return grad_f + jac_g.T @ lam  # type: ignore[no-any-return]
+    return grad_f  # type: ignore[no-any-return]

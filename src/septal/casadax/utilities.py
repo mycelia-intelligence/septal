@@ -6,14 +6,14 @@ These are backend-agnostic helpers used by both solver implementations.
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
 from scipy.stats import qmc
 
 
-def generate_initial_guess(n_starts: int, n_d: int, bounds: List[Any]) -> Any:
+def generate_initial_guess(n_starts: int, n_d: int, bounds: list[Any]) -> Any:
     """Generate Sobol-sequence initial guesses within *bounds*.
 
     Parameters
@@ -37,7 +37,9 @@ def generate_initial_guess(n_starts: int, n_d: int, bounds: List[Any]) -> Any:
     return lb + (ub - lb) * sobol
 
 
-def unpack_results(solutions: list, fallback_solver: Any, fallback_solution: Any) -> tuple:
+def unpack_results(
+    solutions: list, fallback_solver: Any, fallback_solution: Any
+) -> tuple:
     """Pick the best solution from a multi-start result list.
 
     Parameters

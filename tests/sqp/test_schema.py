@@ -1,14 +1,16 @@
 """Tests for septal.jax.sqp.schema."""
 
-import pytest
 import jax.numpy as jnp
+import pytest
 
-from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPState, SQPResult
+from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult, SQPState
 
 
 class TestParametricNLPProblem:
     def test_construction_minimal(self):
-        def f(x, p): return jnp.sum(x ** 2)
+        def f(x, p):
+            return jnp.sum(x**2)
+
         prob = ParametricNLPProblem(
             objective=f,
             bounds=[jnp.zeros(3), jnp.ones(3)],
@@ -21,8 +23,12 @@ class TestParametricNLPProblem:
         assert not prob.has_constraints
 
     def test_n_constraints_inferred_from_rhs(self):
-        def f(x, p): return jnp.sum(x ** 2)
-        def g(x, p): return x[:2]
+        def f(x, p):
+            return jnp.sum(x**2)
+
+        def g(x, p):
+            return x[:2]
+
         prob = ParametricNLPProblem(
             objective=f,
             bounds=[jnp.zeros(3), jnp.ones(3)],
@@ -38,7 +44,10 @@ class TestParametricNLPProblem:
     def test_bounds_properties(self):
         lb = jnp.array([-1.0, -2.0])
         ub = jnp.array([1.0, 2.0])
-        def f(x, p): return jnp.sum(x)
+
+        def f(x, p):
+            return jnp.sum(x)
+
         prob = ParametricNLPProblem(
             objective=f, bounds=[lb, ub], n_decision=2, n_params=0
         )
@@ -46,10 +55,15 @@ class TestParametricNLPProblem:
         assert jnp.allclose(prob.ub, ub)
 
     def test_n_constraints_explicit(self):
-        def f(x, p): return jnp.sum(x)
+        def f(x, p):
+            return jnp.sum(x)
+
         prob = ParametricNLPProblem(
-            objective=f, bounds=[jnp.zeros(2), jnp.ones(2)],
-            n_decision=2, n_params=1, n_constraints=5,
+            objective=f,
+            bounds=[jnp.zeros(2), jnp.ones(2)],
+            n_decision=2,
+            n_params=1,
+            n_constraints=5,
         )
         assert prob.n_constraints == 5
 
@@ -73,7 +87,8 @@ class TestSQPState:
     def test_is_namedtuple_pytree(self):
         """SQPState must be a NamedTuple (JAX pytree)."""
         import jax
-        n, n_g = 3, 2
+
+        n, n_g, M = 3, 2, 5
         state = SQPState(
             x=jnp.zeros(n),
             params_p=jnp.zeros(1),
@@ -87,15 +102,18 @@ class TestSQPState:
             feasibility=jnp.array(0.0),
             iteration=jnp.array(0, dtype=jnp.int32),
             converged=jnp.array(False),
+            merit_window=jnp.zeros(M),
+            stagnation_count=jnp.array(0, dtype=jnp.int32),
+            alpha_last=jnp.array(1.0),
         )
         # Must be flattenable by JAX
         leaves, treedef = jax.tree_util.tree_flatten(state)
-        assert len(leaves) == 12
+        assert len(leaves) == 15
         reconstructed = jax.tree_util.tree_unflatten(treedef, leaves)
         assert jnp.allclose(reconstructed.x, state.x)
 
     def test_replace(self):
-        n = 2
+        n, M = 2, 5
         state = SQPState(
             x=jnp.zeros(n),
             params_p=jnp.zeros(1),
@@ -109,6 +127,9 @@ class TestSQPState:
             feasibility=jnp.array(0.0),
             iteration=jnp.array(0, dtype=jnp.int32),
             converged=jnp.array(False),
+            merit_window=jnp.zeros(M),
+            stagnation_count=jnp.array(0, dtype=jnp.int32),
+            alpha_last=jnp.array(1.0),
         )
         new_state = state._replace(converged=jnp.array(True))
         assert bool(new_state.converged)

@@ -1,9 +1,10 @@
 """Tests for septal.casadax.utilities."""
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
-from septal.casadax.utilities import generate_initial_guess, unpack_results, clean_up
+import pytest
+
+from septal.casadax.utilities import clean_up, generate_initial_guess, unpack_results
 
 
 class TestGenerateInitialGuess:
@@ -35,10 +36,11 @@ class TestUnpackResults:
         class FakeSolver:
             def stats(self):
                 return {"return_status": "ok", "success": True, "t_wall_total": 0.1}
+
         return FakeSolver()
 
     def _make_fake_solution(self, f_val):
-        return {"f": np.array([[f_val]]), "x": np.zeros(2), "g": np.zeros(0)}
+        return {"f": np.array(f_val), "x": np.zeros(2), "g": np.zeros(0)}
 
     def test_picks_best_objective(self):
         s1 = self._make_fake_solver(1.0)

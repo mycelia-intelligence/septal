@@ -1,21 +1,22 @@
 """Tests for septal.casadax.callbacks — JAX-CasADi AD wrappers."""
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
+import pytest
+
 from septal.casadax.callbacks import (
-    JaxCasADiEvaluator,
     JaxCallbackForward,
     JaxCallbackReverse,
+    JaxCasADiEvaluator,
+    casadify,
     casadify_forward,
     casadify_reverse,
-    casadify,
 )
 
 
 def _scalar_fn(x):
     """f(x) = sum(x^2), shape (1,1)."""
-    return jnp.sum(x ** 2).reshape(1, 1)
+    return jnp.sum(x**2).reshape(1, 1)
 
 
 def _vector_fn(x):
@@ -36,6 +37,7 @@ class TestJaxCasADiEvaluator:
 
     def test_eval_scalar(self):
         from casadi import DM
+
         cb = JaxCasADiEvaluator(_scalar_fn, nd=2)
         x_in = DM([1.0, 2.0])
         result = cb.eval([x_in])
@@ -44,13 +46,14 @@ class TestJaxCasADiEvaluator:
 
     def test_eval_vector(self):
         from casadi import DM
+
         cb = JaxCasADiEvaluator(_vector_fn, nd=2)
         x_in = DM([2.0, 3.0])
         result = cb.eval([x_in])
         out = np.array(result[0]).flatten()
-        assert out[0] == pytest.approx(4.0)   # 2^2
-        assert out[1] == pytest.approx(9.0)   # 3^2
-        assert out[2] == pytest.approx(6.0)   # 2*3
+        assert out[0] == pytest.approx(4.0)  # 2^2
+        assert out[1] == pytest.approx(9.0)  # 3^2
+        assert out[2] == pytest.approx(6.0)  # 2*3
 
 
 class TestJaxCallbackForward:
@@ -62,6 +65,7 @@ class TestJaxCallbackForward:
 
     def test_eval_matches_base(self):
         from casadi import DM
+
         cb = JaxCallbackForward(_scalar_fn, nd=2)
         x_in = DM([3.0, 4.0])
         result = cb.eval([x_in])
@@ -70,6 +74,7 @@ class TestJaxCallbackForward:
 
     def test_counter_increments(self):
         from casadi import DM
+
         cb = JaxCallbackForward(_scalar_fn, nd=2)
         cb.eval([DM([1.0, 0.0])])
         cb.eval([DM([0.0, 1.0])])
@@ -85,6 +90,7 @@ class TestJaxCallbackReverse:
 
     def test_eval_matches_base(self):
         from casadi import DM
+
         cb = JaxCallbackReverse(_scalar_fn, nd=2)
         x_in = DM([1.0, 2.0])
         result = cb.eval([x_in])
@@ -93,6 +99,7 @@ class TestJaxCallbackReverse:
 
     def test_counter_increments(self):
         from casadi import DM
+
         cb = JaxCallbackReverse(_scalar_fn, nd=2)
         cb.eval([DM([0.0, 0.0])])
         assert cb.counter == 1
@@ -119,6 +126,7 @@ class TestCasadifyFactories:
 
     def test_casadify_reverse_correct_value(self):
         from casadi import DM
+
         cb = casadify_reverse(_scalar_fn, nd=3)
         x_in = DM([1.0, 1.0, 1.0])
         result = cb.eval([x_in])
@@ -126,6 +134,7 @@ class TestCasadifyFactories:
 
     def test_casadify_forward_correct_value(self):
         from casadi import DM
+
         cb = casadify_forward(_vector_fn, nd=2)
         x_in = DM([2.0, 3.0])
         result = cb.eval([x_in])

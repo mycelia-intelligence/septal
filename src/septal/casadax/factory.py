@@ -12,7 +12,8 @@ Supported solver types
 
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from septal.casadax.schema import NLPProblem, SolveResult
 from septal.casadax.solvers import BaseSolver, CasadiSolver, JaxSolver
@@ -33,19 +34,21 @@ class SolverFactory:
     def __init__(self, cfg: Any, solver_type: str) -> None:
         self.cfg = cfg
         self.solver_type = solver_type
-        self.solver: Optional[BaseSolver] = None
-        self.objective_func: Optional[Callable] = None
-        self.constraints_func: Optional[Callable] = None
-        self.bounds: Optional[List[Any]] = None
-        self.constraint_lhs: Optional[Any] = None
-        self.constraint_rhs: Optional[Any] = None
+        self.solver: BaseSolver | None = None
+        self.objective_func: Callable | None = None
+        self.constraints_func: Callable | None = None
+        self.bounds: list[Any] | None = None
+        self.constraint_lhs: Any | None = None
+        self.constraint_rhs: Any | None = None
 
     # ------------------------------------------------------------------
     # Class-level constructor (preferred entry point)
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_problem(cls, cfg: Any, solver_type: str, problem: NLPProblem) -> "SolverFactory":
+    def from_problem(
+        cls, cfg: Any, solver_type: str, problem: NLPProblem
+    ) -> SolverFactory:
         """Build a factory and construct the solver from an :class:`~septal.casadax.schema.NLPProblem`.
 
         Parameters
@@ -65,7 +68,9 @@ class SolverFactory:
         factory = cls(cfg, solver_type)
         factory.load_objective(problem.objective)
         factory.load_bounds(problem.bounds)
-        factory.load_constraints(problem.constraints, problem.constraint_lhs, problem.constraint_rhs)
+        factory.load_constraints(
+            problem.constraints, problem.constraint_lhs, problem.constraint_rhs
+        )
         factory.construct_solver()
         return factory
 
@@ -75,11 +80,11 @@ class SolverFactory:
         cfg: Any,
         solver_type: str,
         objective_func: Callable,
-        bounds: List[Any],
-        constraints_func: Optional[Callable] = None,
-        constraint_lhs: Optional[Any] = None,
-        constraint_rhs: Optional[Any] = None,
-    ) -> "SolverFactory":
+        bounds: list[Any],
+        constraints_func: Callable | None = None,
+        constraint_lhs: Any | None = None,
+        constraint_rhs: Any | None = None,
+    ) -> SolverFactory:
         """Build a factory from individual components (legacy / low-level entry).
 
         Parameters
@@ -115,14 +120,14 @@ class SolverFactory:
     def load_objective(self, objective_func: Callable) -> None:
         self.objective_func = objective_func
 
-    def load_bounds(self, bounds: List[Any]) -> None:
+    def load_bounds(self, bounds: list[Any]) -> None:
         self.bounds = bounds
 
     def load_constraints(
         self,
-        constraints_func: Optional[Callable],
-        lhs: Optional[Any] = None,
-        rhs: Optional[Any] = None,
+        constraints_func: Callable | None,
+        lhs: Any | None = None,
+        rhs: Any | None = None,
     ) -> None:
         self.constraints_func = constraints_func
         self.constraint_lhs = lhs
@@ -146,7 +151,9 @@ class SolverFactory:
         elif self.solver_type == "box_constrained_nlp":
             self.solver = JaxSolver(self.cfg, self.objective_func, self.bounds)
         else:
-            raise NotImplementedError(f"Solver type '{self.solver_type}' is not implemented.")
+            raise NotImplementedError(
+                f"Solver type '{self.solver_type}' is not implemented."
+            )
 
     # ------------------------------------------------------------------
     # Solve interface

@@ -39,13 +39,12 @@ skipped and α = 0 is returned to avoid taking a damaging step.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
 
 from septal.jax.sqp.schema import SQPConfig
-
 
 # ---------------------------------------------------------------------------
 # L1 merit helpers
@@ -160,7 +159,7 @@ def update_penalty(
     if n_g > 0:
         lam_inf = jnp.max(jnp.abs(lam))
         target = lam_inf + eps
-        penalty_up   = jnp.maximum(target, penalty)
+        penalty_up = jnp.maximum(target, penalty)
         penalty_down = jnp.maximum(target, decrease_factor * penalty)
         return jnp.where(feasibility < eps, penalty_down, penalty_up)
     return penalty
@@ -179,7 +178,7 @@ def backtracking_line_search(
     dir_deriv: jnp.ndarray,
     penalty: jnp.ndarray,
     objective: Callable,
-    constraints: Optional[Callable],
+    constraints: Callable | None,
     lhs: jnp.ndarray,
     rhs: jnp.ndarray,
     n_g: int,
@@ -251,7 +250,7 @@ def backtracking_line_search(
         trial_merit = _merit_at(alpha)
         armijo = trial_merit <= reference_merit + c * alpha * dir_deriv
         # Continue if Armijo fails AND we have more trials
-        return (~armijo) & (i < cfg.max_line_search)
+        return (~armijo) & (i < cfg.max_line_search)  # type: ignore[no-any-return]
 
     def body_fn(state: tuple) -> tuple:
         alpha, i = state

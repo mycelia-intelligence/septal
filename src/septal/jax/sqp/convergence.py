@@ -14,7 +14,7 @@ into the feasible region), which is NOT a KKT violation.  Using the raw
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
@@ -27,13 +27,13 @@ def kkt_residuals(
     lam: jnp.ndarray,
     p: jnp.ndarray,
     objective: Callable,
-    constraints: Optional[Callable],
-    constraint_lhs: Optional[jnp.ndarray],
-    constraint_rhs: Optional[jnp.ndarray],
+    constraints: Callable | None,
+    constraint_lhs: jnp.ndarray | None,
+    constraint_rhs: jnp.ndarray | None,
     n_g: int,
-    lb: Optional[jnp.ndarray] = None,
-    ub: Optional[jnp.ndarray] = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    lb: jnp.ndarray | None = None,
+    ub: jnp.ndarray | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute KKT stationarity and primal feasibility residuals.
 
     Parameters

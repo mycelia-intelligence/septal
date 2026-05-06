@@ -1,51 +1,60 @@
 """Tests for septal.casadax.factory — SolverFactory."""
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
+import pytest
+
+from septal.casadax.callbacks import casadify_reverse
 from septal.casadax.factory import SolverFactory
 from septal.casadax.schema import NLPProblem, SolveResult
-from septal.casadax.callbacks import casadify_reverse
 from septal.casadax.solvers import CasadiSolver, JaxSolver
 
 
 def _quadratic(x):
-    return jnp.sum(x ** 2).reshape(1, 1)
+    return jnp.sum(x**2).reshape(1, 1)
 
 
 def _quadratic_jax(x):
     """Scalar output for JaxSolver."""
-    return jnp.sum(x ** 2)
+    return jnp.sum(x**2)
 
 
 class TestSolverFactoryFromMethod:
     def test_creates_casadi_solver(self, solver_cfg, simple_bounds):
         objective_cb = casadify_reverse(_quadratic, nd=2)
         factory = SolverFactory.from_method(
-            solver_cfg, "general_constrained_nlp",
-            objective_cb, simple_bounds,
+            solver_cfg,
+            "general_constrained_nlp",
+            objective_cb,
+            simple_bounds,
         )
         assert isinstance(factory.solver, CasadiSolver)
 
     def test_creates_jax_solver(self, solver_cfg, simple_bounds):
         factory = SolverFactory.from_method(
-            solver_cfg, "box_constrained_nlp",
-            _quadratic_jax, simple_bounds,
+            solver_cfg,
+            "box_constrained_nlp",
+            _quadratic_jax,
+            simple_bounds,
         )
         assert isinstance(factory.solver, JaxSolver)
 
     def test_unknown_solver_type_raises(self, solver_cfg, simple_bounds):
         with pytest.raises(NotImplementedError):
             SolverFactory.from_method(
-                solver_cfg, "nonexistent_type",
-                _quadratic, simple_bounds,
+                solver_cfg,
+                "nonexistent_type",
+                _quadratic,
+                simple_bounds,
             )
 
     def test_solve_returns_result(self, solver_cfg, simple_bounds):
         objective_cb = casadify_reverse(_quadratic, nd=2)
         factory = SolverFactory.from_method(
-            solver_cfg, "general_constrained_nlp",
-            objective_cb, simple_bounds,
+            solver_cfg,
+            "general_constrained_nlp",
+            objective_cb,
+            simple_bounds,
         )
         guesses = factory.initial_guess()
         result = factory.solve(guesses)
@@ -55,8 +64,10 @@ class TestSolverFactoryFromMethod:
         """factory(guesses) should be identical to factory.solve(guesses)."""
         objective_cb = casadify_reverse(_quadratic, nd=2)
         factory = SolverFactory.from_method(
-            solver_cfg, "general_constrained_nlp",
-            objective_cb, simple_bounds,
+            solver_cfg,
+            "general_constrained_nlp",
+            objective_cb,
+            simple_bounds,
         )
         guesses = factory.initial_guess()
         result = factory(guesses)
@@ -67,14 +78,18 @@ class TestSolverFactoryFromProblem:
     def test_creates_correct_backend(self, solver_cfg, simple_bounds):
         objective_cb = casadify_reverse(_quadratic, nd=2)
         problem = NLPProblem(objective=objective_cb, bounds=simple_bounds)
-        factory = SolverFactory.from_problem(solver_cfg, "general_constrained_nlp", problem)
+        factory = SolverFactory.from_problem(
+            solver_cfg, "general_constrained_nlp", problem
+        )
         assert isinstance(factory.solver, CasadiSolver)
 
     def test_solves_correctly(self, solver_cfg, simple_bounds):
         """sum(x^2) on [-1,1]^2 — minimum at 0."""
         objective_cb = casadify_reverse(_quadratic, nd=2)
         problem = NLPProblem(objective=objective_cb, bounds=simple_bounds, n_starts=4)
-        factory = SolverFactory.from_problem(solver_cfg, "general_constrained_nlp", problem)
+        factory = SolverFactory.from_problem(
+            solver_cfg, "general_constrained_nlp", problem
+        )
         result = factory.solve(factory.initial_guess())
         assert result.success
         assert float(result.objective) == pytest.approx(0.0, abs=1e-3)
@@ -100,7 +115,9 @@ class TestSolverFactoryFromProblem:
             constraint_rhs=jnp.zeros((1, 1)),
             n_starts=4,
         )
-        factory = SolverFactory.from_problem(solver_cfg, "general_constrained_nlp", problem)
+        factory = SolverFactory.from_problem(
+            solver_cfg, "general_constrained_nlp", problem
+        )
         result = factory.solve(factory.initial_guess())
         assert result.success
         assert float(result.objective) == pytest.approx(0.5, abs=5e-2)

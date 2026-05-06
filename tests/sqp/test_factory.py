@@ -1,21 +1,24 @@
 """Tests for septal.jax.sqp.factory.ParametricSQPFactory."""
 
-import pytest
 import jax
 import jax.numpy as jnp
+import pytest
 
-from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult
-from septal.jax.sqp.factory import ParametricSQPFactory
 from septal.casadax.schema import NLPProblem
-
+from septal.jax.sqp.factory import ParametricSQPFactory
+from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult
 
 # ---------------------------------------------------------------------------
 # Problem helpers
 # ---------------------------------------------------------------------------
 
+
 def make_quadratic_problem(n=2, m=2):
     """min ½‖x - p‖²,  x ∈ [-2, 2]^n,  p ∈ R^m."""
-    def f(x, p): return 0.5 * jnp.sum((x - p) ** 2)
+
+    def f(x, p):
+        return 0.5 * jnp.sum((x - p) ** 2)
+
     return ParametricNLPProblem(
         objective=f,
         bounds=[jnp.full(n, -2.0), jnp.full(n, 2.0)],
@@ -26,8 +29,13 @@ def make_quadratic_problem(n=2, m=2):
 
 def make_constrained_problem():
     """min ½‖x‖²  s.t.  x[0] + x[1] >= p."""
-    def f(x, p): return 0.5 * jnp.sum(x ** 2)
-    def g(x, p): return (p[0] - x[0] - x[1]).reshape(1)
+
+    def f(x, p):
+        return 0.5 * jnp.sum(x**2)
+
+    def g(x, p):
+        return (p[0] - x[0] - x[1]).reshape(1)
+
     return ParametricNLPProblem(
         objective=f,
         bounds=[jnp.full(2, -5.0), jnp.full(2, 5.0)],
@@ -54,6 +62,7 @@ def cfg():
 # Single solve
 # ---------------------------------------------------------------------------
 
+
 class TestSingleSolve:
     def test_returns_sqp_result(self, cfg):
         factory = ParametricSQPFactory(make_quadratic_problem(), cfg)
@@ -77,8 +86,7 @@ class TestSingleSolve:
 
     def test_while_loop_variant(self, cfg):
         factory = ParametricSQPFactory(make_quadratic_problem(), cfg)
-        result = factory.solve(jnp.zeros(2), jnp.array([0.5, 0.5]),
-                               use_while_loop=True)
+        result = factory.solve(jnp.zeros(2), jnp.array([0.5, 0.5]), use_while_loop=True)
         assert isinstance(result, SQPResult)
         assert result.success
 
@@ -91,12 +99,16 @@ class TestSingleSolve:
         factory = ParametricSQPFactory(make_constrained_problem(), cfg)
         result = factory.solve(jnp.zeros(2), jnp.array([1.0]))
         assert result.success
-        assert float(result.decision_variables[0] + result.decision_variables[1]) >= 1.0 - 1e-3
+        assert (
+            float(result.decision_variables[0] + result.decision_variables[1])
+            >= 1.0 - 1e-3
+        )
 
 
 # ---------------------------------------------------------------------------
 # Batched solve
 # ---------------------------------------------------------------------------
+
 
 class TestBatchedSolve:
     def test_batch_output_shapes(self, cfg):
@@ -115,7 +127,7 @@ class TestBatchedSolve:
         N = 5
         factory = ParametricSQPFactory(make_quadratic_problem(), cfg)
         params = jnp.ones((N, 2)) * 0.5
-        x0 = jnp.zeros(2)   # 1D — should broadcast
+        x0 = jnp.zeros(2)  # 1D — should broadcast
         result = factory.solve_batch(x0, params)
         assert result.decision_variables.shape == (N, 2)
 
@@ -127,8 +139,9 @@ class TestBatchedSolve:
         x0s = jnp.zeros((N, 1))
         result = factory.solve_batch(x0s, params)
         # x* ≈ p for each
-        assert jnp.allclose(result.decision_variables.reshape(N),
-                            params.reshape(N), atol=1e-3)
+        assert jnp.allclose(
+            result.decision_variables.reshape(N), params.reshape(N), atol=1e-3
+        )
 
     def test_batch_timing_recorded(self, cfg):
         N = 4
@@ -142,6 +155,7 @@ class TestBatchedSolve:
 # ---------------------------------------------------------------------------
 # compile_batch
 # ---------------------------------------------------------------------------
+
 
 class TestCompileBatch:
     def test_compile_and_run(self, cfg):
@@ -175,10 +189,13 @@ class TestCompileBatch:
 # from_nlp_problem class method
 # ---------------------------------------------------------------------------
 
+
 class TestFromNLPProblem:
     def test_construction_from_nlp_problem(self, cfg):
         """from_nlp_problem must wrap an NLPProblem with a (x, p) objective."""
-        def f(x, p): return jnp.sum(x ** 2)   # accepts p but ignores it
+
+        def f(x, p):
+            return jnp.sum(x**2)  # accepts p but ignores it
 
         nlp = NLPProblem(
             objective=f,
@@ -189,7 +206,9 @@ class TestFromNLPProblem:
         assert factory.problem.n_params == 3
 
     def test_from_nlp_problem_solves(self, cfg):
-        def f(x, p): return jnp.sum(x ** 2)
+        def f(x, p):
+            return jnp.sum(x**2)
+
         nlp = NLPProblem(
             objective=f,
             bounds=[jnp.full(2, -1.0), jnp.full(2, 1.0)],

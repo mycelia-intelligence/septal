@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable, List, Optional
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -40,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 def _ipopt_no_gcons(
     objective: Any,
-    bounds: List[Any],
+    bounds: list[Any],
     initial_guess: Any,
 ) -> tuple:
     """Single-start IPOPT solve — unconstrained (box bounds only)."""
@@ -68,7 +69,7 @@ def _ipopt_no_gcons(
 def _ipopt_gcons(
     objective: Any,
     constraints: Any,
-    bounds: List[Any],
+    bounds: list[Any],
     initial_guess: Any,
     lhs: Any,
     rhs: Any,
@@ -184,10 +185,10 @@ class CasadiSolver(BaseSolver):
         self,
         cfg: Any,
         objective_fn: Callable,
-        bounds: List[Any],
-        constraints_fn: Optional[Callable] = None,
-        constraint_lhs: Optional[Any] = None,
-        constraint_rhs: Optional[Any] = None,
+        bounds: list[Any],
+        constraints_fn: Callable | None = None,
+        constraint_lhs: Any | None = None,
+        constraint_rhs: Any | None = None,
     ) -> None:
         super().__init__(cfg)
         self.objective_fn = objective_fn
@@ -219,9 +220,7 @@ class CasadiSolver(BaseSolver):
                         self.constraint_rhs,
                     )
                 else:
-                    solver, sol = _ipopt_no_gcons(
-                        self.objective_fn, self.bounds, x0
-                    )
+                    solver, sol = _ipopt_no_gcons(self.objective_fn, self.bounds, x0)
                 if solver.stats()["success"]:
                     solutions.append((solver, sol))
                     if np.array(sol["f"]) <= 0:
@@ -245,20 +244,20 @@ class CasadiSolver(BaseSolver):
         stats = solver_opt.stats()
         success: bool = bool(stats.get("success", False))
         t_wall = sum(v for k, v in stats.items() if "t_wall_" in k)
-        objective = np.array(sol_opt["f"])
-        constraints = np.array(sol_opt["g"]) if "g" in sol_opt else None
+        objective = float(np.array(sol_opt["f"]).reshape(-1)[0])
+        constraints = np.array(sol_opt["g"]).reshape(-1) if "g" in sol_opt else None
         decision = np.array(sol_opt["x"])
         message: str = str(stats.get("return_status", ""))
 
         if not success:
             if constraints is not None:
-                objective = np.maximum(
-                    objective.reshape(-1),
-                    np.max(np.abs(constraints)).reshape(-1),
-                )
+                objective = float(np.maximum(objective, np.max(np.abs(constraints))))
             logger.warning("CasadiSolver: %s", message)
 
-        if t_wall >= getattr(self.cfg, "max_solution_time", float("inf")) and not success:
+        if (
+            t_wall >= getattr(self.cfg, "max_solution_time", float("inf"))
+            and not success
+        ):
             logger.warning("CasadiSolver: max_solution_time exceeded (%.1f s)", t_wall)
 
         return SolveResult(
@@ -296,7 +295,7 @@ class JaxSolver(BaseSolver):
         self,
         cfg: Any,
         objective_fn: Callable,
-        bounds: List[Any],
+        bounds: list[Any],
         objective_args: tuple = (),
     ) -> None:
         super().__init__(cfg)
@@ -331,13 +330,16 @@ class JaxSolver(BaseSolver):
         )
 
         _, (_, solutions) = lax.scan(
-            lambda carry, x: (None, partial_solver(init=None, xs=x, objective_params=args)),
+            lambda carry, x: (
+                None,
+                partial_solver(init=None, xs=x, objective_params=args),
+            ),
             init=None,
             xs=initial_guesses,
         )
 
         assess = partial(_assess_lbfgsb_solution, objective_func=obj_fn, args=args)
-        _, assessment = lax.scan(assess, init=None, xs=solutions.params)  # type: ignore[attr-defined]
+        _, assessment = lax.scan(assess, init=None, xs=solutions.params)  # type: ignore[attr-defined, var-annotated]
 
         cond = solutions.state.error <= jnp.array([tol]).squeeze()  # type: ignore[attr-defined]
         mask = jnp.asarray(cond)

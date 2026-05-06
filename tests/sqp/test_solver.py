@@ -1,28 +1,31 @@
 """Tests for septal.jax.sqp.solver."""
 
-import pytest
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPState
 from septal.jax.sqp.solver import (
+    batch_state_to_result,
     init_sqp_state,
+    make_solver,
     sqp_solve_scan,
     sqp_solve_single,
-    make_solver,
     state_to_result,
-    batch_state_to_result,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def make_unconstrained(n=2):
     """min ½‖x - p‖²,  lb=-2, ub=2.  Optimal x* = clip(p, -2, 2)."""
-    def f(x, p): return 0.5 * jnp.sum((x - p) ** 2)
+
+    def f(x, p):
+        return 0.5 * jnp.sum((x - p) ** 2)
+
     return ParametricNLPProblem(
         objective=f,
         bounds=[jnp.full(n, -2.0), jnp.full(n, 2.0)],
@@ -33,8 +36,13 @@ def make_unconstrained(n=2):
 
 def make_constrained():
     """min ½‖x‖²  s.t.  x[0] + x[1] >= p[0].  Optimal: x* = [p/2, p/2]."""
-    def f(x, p): return 0.5 * jnp.sum(x ** 2)
-    def g(x, p): return (p[0] - x[0] - x[1]).reshape(1)  # g <= 0
+
+    def f(x, p):
+        return 0.5 * jnp.sum(x**2)
+
+    def g(x, p):
+        return (p[0] - x[0] - x[1]).reshape(1)  # g <= 0
+
     return ParametricNLPProblem(
         objective=f,
         bounds=[jnp.full(2, -5.0), jnp.full(2, 5.0)],
@@ -60,6 +68,7 @@ def cfg():
 # ---------------------------------------------------------------------------
 # init_sqp_state
 # ---------------------------------------------------------------------------
+
 
 class TestInitSQPState:
     def test_shapes_unconstrained(self, cfg):
@@ -102,6 +111,7 @@ class TestInitSQPState:
 # ---------------------------------------------------------------------------
 # sqp_solve_scan  (and sqp_solve_single)
 # ---------------------------------------------------------------------------
+
 
 class TestSQPSolveUnconstrained:
     def test_converges_to_known_optimum(self, cfg):
@@ -157,6 +167,7 @@ class TestSQPSolveConstrained:
 # make_solver + vmap batching
 # ---------------------------------------------------------------------------
 
+
 class TestMakeSolverBatched:
     def test_single_solve(self, cfg):
         problem = make_unconstrained(n=2)
@@ -208,6 +219,7 @@ class TestMakeSolverBatched:
 # ---------------------------------------------------------------------------
 # state_to_result / batch_state_to_result
 # ---------------------------------------------------------------------------
+
 
 class TestStateToResult:
     def test_result_from_converged_state(self, cfg):
