@@ -244,16 +244,15 @@ class CasadiSolver(BaseSolver):
         stats = solver_opt.stats()
         success: bool = bool(stats.get("success", False))
         t_wall = sum(v for k, v in stats.items() if "t_wall_" in k)
-        objective = np.array(sol_opt["f"])
-        constraints = np.array(sol_opt["g"]) if "g" in sol_opt else None
+        objective = float(np.array(sol_opt["f"]).reshape(-1)[0])
+        constraints = np.array(sol_opt["g"]).reshape(-1) if "g" in sol_opt else None
         decision = np.array(sol_opt["x"])
         message: str = str(stats.get("return_status", ""))
 
         if not success:
             if constraints is not None:
-                objective = np.maximum(
-                    objective.reshape(-1),
-                    np.max(np.abs(constraints)).reshape(-1),
+                objective = float(
+                    np.maximum(objective, np.max(np.abs(constraints)))
                 )
             logger.warning("CasadiSolver: %s", message)
 

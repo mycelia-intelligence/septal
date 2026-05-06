@@ -40,7 +40,7 @@ class TestUnpackResults:
         return FakeSolver()
 
     def _make_fake_solution(self, f_val):
-        return {"f": np.array([[f_val]]), "x": np.zeros(2), "g": np.zeros(0)}
+        return {"f": np.array(f_val), "x": np.zeros(2), "g": np.zeros(0)}
 
     def test_picks_best_objective(self):
         s1 = self._make_fake_solver(1.0)
