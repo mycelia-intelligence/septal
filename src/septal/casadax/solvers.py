@@ -342,7 +342,7 @@ class JaxSolver(BaseSolver):
         )
 
         assess = partial(_assess_lbfgsb_solution, objective_func=obj_fn, args=args)
-        _, assessment = lax.scan(assess, init=None, xs=solutions.params)  # type: ignore[attr-defined]
+        _, assessment = lax.scan(assess, init=None, xs=solutions.params)  # type: ignore[attr-defined, var-annotated]
 
         cond = solutions.state.error <= jnp.array([tol]).squeeze()  # type: ignore[attr-defined]
         mask = jnp.asarray(cond)

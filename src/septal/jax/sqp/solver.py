@@ -581,7 +581,7 @@ def make_batch_solver(
 
         return _solve_vmap
     elif mode == "pmap":
-        return jax.pmap(_solve_single)
+        return jax.pmap(_solve_single)  # type: ignore[no-any-return]
     else:
         raise ValueError(f"mode must be 'vmap' or 'pmap', got {mode!r}")
 
@@ -663,7 +663,7 @@ def batch_state_to_result(
 
     g_final = None
     if n_g > 0 and problem.constraints is not None:
-        g_final = jax.vmap(lambda x, p: problem.constraints(x, p))(
+        g_final = jax.vmap(lambda x, p: problem.constraints(x, p))(  # type: ignore[misc]
             state.x, state.params_p
         )
 

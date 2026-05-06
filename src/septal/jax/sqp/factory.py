@@ -103,7 +103,7 @@ class ParametricSQPFactory:
         """
         n = self.problem.n_decision
         guess = generate_initial_guess(1, n, self.problem.bounds)
-        return guess.reshape(n)
+        return guess.reshape(n)  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Batched solve
@@ -214,10 +214,12 @@ class ParametricSQPFactory:
         -------
         ParametricSQPFactory
         """
+        n_decision = problem.n_decision
+        assert n_decision is not None, "NLPProblem.n_decision must be set before conversion"
         param_problem = ParametricNLPProblem(
             objective=problem.objective,
             bounds=problem.bounds,
-            n_decision=problem.n_decision,
+            n_decision=n_decision,
             n_params=n_params,
             constraints=problem.constraints,
             constraint_lhs=problem.constraint_lhs,

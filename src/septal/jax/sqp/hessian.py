@@ -31,6 +31,8 @@ All operations are pure JAX — no Python control flow on traced values.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import jax
 import jax.numpy as jnp
 
@@ -101,8 +103,8 @@ def regularised_lagrangian_hessian(
     x: jnp.ndarray,
     lam: jnp.ndarray,
     p: jnp.ndarray,
-    objective: callable,
-    constraints: callable,
+    objective: Callable,
+    constraints: Callable | None,
     n_g: int,
     hess_reg_delta: float = 1e-4,
     hess_reg_min: float = 1e-8,
@@ -146,8 +148,8 @@ def lagrangian_hessian(
     x: jnp.ndarray,
     lam: jnp.ndarray,
     p: jnp.ndarray,
-    objective: callable,
-    constraints: callable,
+    objective: Callable,
+    constraints: Callable | None,
     n_g: int,
 ) -> jnp.ndarray:
     """Compute the exact Lagrangian Hessian ∇²_xx L(x, λ, p) via ``jax.hessian``.
@@ -177,18 +179,18 @@ def lagrangian_hessian(
         f = objective(x_, p)
         if n_g > 0 and constraints is not None:
             g = constraints(x_, p)
-            return f + lam @ g
-        return f
+            return f + lam @ g  # type: ignore[no-any-return]
+        return f  # type: ignore[no-any-return]
 
-    return jax.hessian(lagrangian)(x)
+    return jax.hessian(lagrangian)(x)  # type: ignore[no-any-return]
 
 
 def lagrangian_grad(
     x: jnp.ndarray,
     lam: jnp.ndarray,
     p: jnp.ndarray,
-    objective: callable,
-    constraints: callable,
+    objective: Callable,
+    constraints: Callable | None,
     n_g: int,
 ) -> jnp.ndarray:
     """Compute the Lagrangian gradient ∇_x L(x, λ, p).
@@ -216,5 +218,5 @@ def lagrangian_grad(
     grad_f = jax.grad(objective)(x, p)
     if n_g > 0 and constraints is not None:
         jac_g = jax.jacfwd(constraints)(x, p)  # (n_g, n)
-        return grad_f + jac_g.T @ lam
-    return grad_f
+        return grad_f + jac_g.T @ lam  # type: ignore[no-any-return]
+    return grad_f  # type: ignore[no-any-return]

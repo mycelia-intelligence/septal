@@ -358,7 +358,7 @@ def _kkt_residual_norm(
     r_stat = Q @ d + c + A.T @ y
     Ad = A @ d
     r_feas = Ad - jnp.clip(Ad + y, l, u)
-    return jnp.linalg.norm(r_stat) + jnp.linalg.norm(r_feas)
+    return jnp.linalg.norm(r_stat) + jnp.linalg.norm(r_feas)  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------

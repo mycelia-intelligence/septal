@@ -250,7 +250,7 @@ def backtracking_line_search(
         trial_merit = _merit_at(alpha)
         armijo = trial_merit <= reference_merit + c * alpha * dir_deriv
         # Continue if Armijo fails AND we have more trials
-        return (~armijo) & (i < cfg.max_line_search)
+        return (~armijo) & (i < cfg.max_line_search)  # type: ignore[no-any-return]
 
     def body_fn(state: tuple) -> tuple:
         alpha, i = state

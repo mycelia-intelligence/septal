@@ -80,7 +80,7 @@ class ParametricNLPProblem:
 
     @property
     def has_constraints(self) -> bool:
-        return self.constraints is not None and self.n_constraints > 0
+        return self.constraints is not None and (self.n_constraints or 0) > 0
 
 
 # ---------------------------------------------------------------------------
