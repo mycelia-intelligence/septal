@@ -102,7 +102,12 @@ class TestUpdatePenalty:
     def test_no_constraints_unchanged(self):
         rho = jnp.array(3.0)
         rho_new = update_penalty(
-            jnp.zeros(0), rho, 0, eps=0.1, feasibility=jnp.array(0.0), decrease_factor=1.0
+            jnp.zeros(0),
+            rho,
+            0,
+            eps=0.1,
+            feasibility=jnp.array(0.0),
+            decrease_factor=1.0,
         )
         assert float(rho_new) == pytest.approx(3.0)
 
