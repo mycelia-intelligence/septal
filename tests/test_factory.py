@@ -1,11 +1,12 @@
 """Tests for septal.casadax.factory — SolverFactory."""
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
+import pytest
+
+from septal.casadax.callbacks import casadify_reverse
 from septal.casadax.factory import SolverFactory
 from septal.casadax.schema import NLPProblem, SolveResult
-from septal.casadax.callbacks import casadify_reverse
 from septal.casadax.solvers import CasadiSolver, JaxSolver
 
 

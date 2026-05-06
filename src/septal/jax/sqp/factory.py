@@ -22,12 +22,13 @@ Usage — pre-compiled batch solve
 from __future__ import annotations
 
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
 
 from septal.casadax.schema import NLPProblem
+from septal.casadax.utilities import generate_initial_guess
 from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult
 from septal.jax.sqp.solver import (
     batch_state_to_result,
@@ -35,7 +36,6 @@ from septal.jax.sqp.solver import (
     sqp_solve_single,
     state_to_result,
 )
-from septal.casadax.utilities import generate_initial_guess
 
 
 class ParametricSQPFactory:
@@ -53,7 +53,7 @@ class ParametricSQPFactory:
     def __init__(
         self,
         problem: ParametricNLPProblem,
-        cfg: Optional[SQPConfig] = None,
+        cfg: SQPConfig | None = None,
     ) -> None:
         self.problem = problem
         self.cfg = cfg if cfg is not None else SQPConfig()
@@ -192,8 +192,8 @@ class ParametricSQPFactory:
         cls,
         problem: NLPProblem,
         n_params: int,
-        cfg: Optional[SQPConfig] = None,
-    ) -> "ParametricSQPFactory":
+        cfg: SQPConfig | None = None,
+    ) -> ParametricSQPFactory:
         """Construct from an existing :class:`~septal.casadax.schema.NLPProblem`.
 
         The NLP's objective and constraint functions must accept a second

@@ -1,9 +1,10 @@
 """Tests for septal.casadax.utilities."""
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
-from septal.casadax.utilities import generate_initial_guess, unpack_results, clean_up
+import pytest
+
+from septal.casadax.utilities import clean_up, generate_initial_guess, unpack_results
 
 
 class TestGenerateInitialGuess:

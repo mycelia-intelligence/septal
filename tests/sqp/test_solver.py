@@ -1,20 +1,19 @@
 """Tests for septal.jax.sqp.solver."""
 
-import pytest
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPState
 from septal.jax.sqp.solver import (
+    batch_state_to_result,
     init_sqp_state,
+    make_solver,
     sqp_solve_scan,
     sqp_solve_single,
-    make_solver,
     state_to_result,
-    batch_state_to_result,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

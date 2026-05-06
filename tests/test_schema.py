@@ -1,8 +1,9 @@
 """Tests for septal.casadax.schema — NLPProblem and SolveResult."""
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
+import pytest
+
 from septal.casadax.schema import NLPProblem, SolveResult
 
 

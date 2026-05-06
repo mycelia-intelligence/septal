@@ -41,8 +41,6 @@ multipliers) is returned; the box multipliers y[n_g:] are discarded.
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import jax
 import jax.numpy as jnp
 
@@ -56,7 +54,7 @@ _INF_VAL = 1e10   # finite stand-in for ±∞ in constraint bounds
 # ---------------------------------------------------------------------------
 
 
-def _safe_bounds(l: jnp.ndarray, u: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def _safe_bounds(l: jnp.ndarray, u: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Replace ±inf with ±_INF_VAL so all ADMM arithmetic is finite."""
     l_s = jnp.where(jnp.isinf(l) & (l < 0), -_INF_VAL, l)
     u_s = jnp.where(jnp.isinf(u) & (u > 0), _INF_VAL, u)
@@ -160,7 +158,7 @@ def form_qp_matrices(
     n: int,
     n_g: int,
     reg: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Build OSQP-form QP matrices ``(Q, c, A, l, u)`` for
     ``min ½dᵀQd + cᵀd  s.t.  l ≤ Ad ≤ u``.
 
@@ -228,7 +226,7 @@ def admm_qp(
     adaptive_rho: bool,
     eq_scale: jnp.ndarray,
     y_warm: jnp.ndarray,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """OSQP-style ADMM QP solver for  ``min ½dᵀQd + cᵀd  s.t.  l ≤ Ad ≤ u``.
 
     Fully vmappable and JIT-compilable via ``lax.scan`` with a fixed
@@ -287,7 +285,7 @@ def admm_qp(
 
     def admm_step(
         state: tuple, _: None
-    ) -> Tuple[tuple, None]:
+    ) -> tuple[tuple, None]:
         x, z, y, rho, M, z_prev, k = state
 
         # Per-row effective rho  ρ_vec = ρ · eq_scale
@@ -383,7 +381,7 @@ def polish_qp(
     sigma: float,
     eps: float,
     n_refine: int,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """OSQP-style polishing step (Eq 30, Stellato et al. 2020).
 
     After ADMM converges to ``(d_admm, y_admm, z_admm)``, this step guesses
@@ -427,7 +425,6 @@ def polish_qp(
     y_pol : (m,)   Polished dual   (scaled; caller unscales with e_scale).
     """
     n = Q.shape[0]
-    m = A.shape[0]
 
     # --- Active-set classification (OSQP §3.2 criterion) ------------------
     is_eq = l == u                                          # (m,) bool
@@ -486,8 +483,8 @@ def solve_qp_subproblem(
     n: int,
     n_g: int,
     cfg: SQPConfig,
-    lam_prev: Optional[jnp.ndarray] = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    lam_prev: jnp.ndarray | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Solve the SQP QP subproblem via OSQP-style ADMM.
 
     Fully vmappable (no jaxopt dependency).

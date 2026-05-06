@@ -13,11 +13,11 @@ structural problem for N different values of p simultaneously via jax.vmap.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional, NamedTuple
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, NamedTuple
 
 import jax.numpy as jnp
-
 
 # ---------------------------------------------------------------------------
 # Problem definition
@@ -53,13 +53,13 @@ class ParametricNLPProblem:
     """
 
     objective: Callable
-    bounds: List[Any]
+    bounds: list[Any]
     n_decision: int
     n_params: int
-    constraints: Optional[Callable] = None
-    constraint_lhs: Optional[Any] = None
-    constraint_rhs: Optional[Any] = None
-    n_constraints: Optional[int] = None
+    constraints: Callable | None = None
+    constraint_lhs: Any | None = None
+    constraint_rhs: Any | None = None
+    n_constraints: int | None = None
 
     def __post_init__(self) -> None:
         if self.n_constraints is None:
@@ -303,7 +303,7 @@ class SQPResult:
     objective: Any
     decision_variables: Any
     multipliers: Any = None
-    constraints: Optional[Any] = None
+    constraints: Any | None = None
     iterations: Any = 0
     kkt_stationarity: Any = 0.0
     kkt_feasibility: Any = 0.0

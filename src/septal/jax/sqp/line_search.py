@@ -39,13 +39,12 @@ skipped and α = 0 is returned to avoid taking a damaging step.
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
 
 from septal.jax.sqp.schema import SQPConfig
-
 
 # ---------------------------------------------------------------------------
 # L1 merit helpers
@@ -179,7 +178,7 @@ def backtracking_line_search(
     dir_deriv: jnp.ndarray,
     penalty: jnp.ndarray,
     objective: Callable,
-    constraints: Optional[Callable],
+    constraints: Callable | None,
     lhs: jnp.ndarray,
     rhs: jnp.ndarray,
     n_g: int,

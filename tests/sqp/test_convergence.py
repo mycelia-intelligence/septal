@@ -1,10 +1,10 @@
 """Tests for septal.jax.sqp.convergence."""
 
-import pytest
 import jax.numpy as jnp
+import pytest
 
+from septal.jax.sqp.convergence import is_converged, kkt_residuals
 from septal.jax.sqp.schema import SQPConfig
-from septal.jax.sqp.convergence import kkt_residuals, is_converged
 
 
 def make_quadratic_problem():

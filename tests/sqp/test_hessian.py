@@ -1,9 +1,9 @@
 """Tests for septal.jax.sqp.hessian."""
 
-import pytest
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from septal.jax.sqp.hessian import bfgs_update, lagrangian_grad
 

@@ -17,7 +17,7 @@ relative dimensions of the function.
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import jax.numpy as jnp
 import numpy as np
@@ -48,8 +48,10 @@ class JaxCasADiEvaluator(Callback):
         functn: Callable,
         nd: int,
         name: str = "JaxCasADiEvaluator",
-        opts: dict = {},
+        opts: dict | None = None,
     ) -> None:
+        if opts is None:
+            opts = {}
         super().__init__()
         self.nd = nd
         self.refs: list = []
@@ -104,7 +106,7 @@ class JaxCallbackForward(JaxCasADiEvaluator):
         functn: Callable,
         nd: int,
         name: str = "JaxCallbackForward",
-        opts: dict = {},
+        opts: dict | None = None,
     ) -> None:
         super().__init__(functn, nd, name, opts)
         self.counter = 0
@@ -192,7 +194,7 @@ class JaxCallbackReverse(JaxCasADiEvaluator):
         functn: Callable,
         nd: int,
         name: str = "JaxCallbackReverse",
-        opts: dict = {},
+        opts: dict | None = None,
     ) -> None:
         super().__init__(functn, nd, name, opts)
         self.counter = 0

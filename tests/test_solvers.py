@@ -1,12 +1,12 @@
 """Tests for septal.casadax.solvers — CasadiSolver and JaxSolver."""
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
-from septal.casadax.callbacks import casadify_reverse, casadify_forward
+import pytest
+
+from septal.casadax.callbacks import casadify_forward, casadify_reverse
 from septal.casadax.solvers import CasadiSolver, JaxSolver
 from septal.casadax.utilities import generate_initial_guess
-
 
 # ---------------------------------------------------------------------------
 # CasadiSolver

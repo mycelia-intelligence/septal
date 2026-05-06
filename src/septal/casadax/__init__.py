@@ -21,9 +21,9 @@ Typical usage (IPOPT)::
 """
 
 from septal.casadax.callbacks import (
-    JaxCasADiEvaluator,
     JaxCallbackForward,
     JaxCallbackReverse,
+    JaxCasADiEvaluator,
     casadify,
     casadify_forward,
     casadify_reverse,

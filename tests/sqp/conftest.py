@@ -1,10 +1,9 @@
 """Shared fixtures for septal.jax.sqp tests."""
 
-import pytest
 import jax.numpy as jnp
+import pytest
 
 from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig
-
 
 # ---------------------------------------------------------------------------
 # Reusable problem definitions

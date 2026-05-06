@@ -8,17 +8,17 @@ where A stacks general (linearised) constraints above box constraints.
 Equality constraints are encoded as l_i = u_i.
 """
 
-import pytest
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
-from septal.jax.sqp.schema import SQPConfig
 from septal.jax.sqp.qp_subproblem import (
     admm_qp,
     form_qp_matrices,
     solve_qp_subproblem,
 )
+from septal.jax.sqp.schema import SQPConfig
 
 jax.config.update("jax_enable_x64", True)
 

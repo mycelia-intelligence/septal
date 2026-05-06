@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable, List, Optional
+from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
@@ -40,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 def _ipopt_no_gcons(
     objective: Any,
-    bounds: List[Any],
+    bounds: list[Any],
     initial_guess: Any,
 ) -> tuple:
     """Single-start IPOPT solve — unconstrained (box bounds only)."""
@@ -68,7 +69,7 @@ def _ipopt_no_gcons(
 def _ipopt_gcons(
     objective: Any,
     constraints: Any,
-    bounds: List[Any],
+    bounds: list[Any],
     initial_guess: Any,
     lhs: Any,
     rhs: Any,
@@ -184,10 +185,10 @@ class CasadiSolver(BaseSolver):
         self,
         cfg: Any,
         objective_fn: Callable,
-        bounds: List[Any],
-        constraints_fn: Optional[Callable] = None,
-        constraint_lhs: Optional[Any] = None,
-        constraint_rhs: Optional[Any] = None,
+        bounds: list[Any],
+        constraints_fn: Callable | None = None,
+        constraint_lhs: Any | None = None,
+        constraint_rhs: Any | None = None,
     ) -> None:
         super().__init__(cfg)
         self.objective_fn = objective_fn
@@ -296,7 +297,7 @@ class JaxSolver(BaseSolver):
         self,
         cfg: Any,
         objective_fn: Callable,
-        bounds: List[Any],
+        bounds: list[Any],
         objective_args: tuple = (),
     ) -> None:
         super().__init__(cfg)

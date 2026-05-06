@@ -1,9 +1,9 @@
 """Tests for septal.jax.sqp.schema."""
 
-import pytest
 import jax.numpy as jnp
+import pytest
 
-from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPState, SQPResult
+from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult, SQPState
 
 
 class TestParametricNLPProblem:

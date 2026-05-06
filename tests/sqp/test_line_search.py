@@ -1,17 +1,17 @@
 """Tests for septal.jax.sqp.line_search."""
 
-import pytest
 import jax
 import jax.numpy as jnp
+import pytest
 
-from septal.jax.sqp.schema import SQPConfig
 from septal.jax.sqp.line_search import (
+    backtracking_line_search,
     constraint_violation,
     l1_merit,
     merit_directional_deriv,
     update_penalty,
-    backtracking_line_search,
 )
+from septal.jax.sqp.schema import SQPConfig
 
 
 @pytest.fixture

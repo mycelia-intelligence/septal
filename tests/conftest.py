@@ -1,9 +1,10 @@
 """Shared fixtures for septal tests."""
 
-import pytest
+from types import SimpleNamespace
+
 import jax.numpy as jnp
 import numpy as np
-from types import SimpleNamespace
+import pytest
 
 
 @pytest.fixture

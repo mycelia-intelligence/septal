@@ -20,20 +20,17 @@ make_solver(problem, cfg) -> solve_fn
 
 from __future__ import annotations
 
-from functools import partial
-from typing import Callable
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.stats import qmc
 
-from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult, SQPState
 from septal.jax.sqp.convergence import is_converged
 from septal.jax.sqp.hessian import (
     bfgs_update,
     lagrangian_grad,
-    lagrangian_hessian,
     regularised_lagrangian_hessian,
 )
 from septal.jax.sqp.line_search import (
@@ -43,7 +40,7 @@ from septal.jax.sqp.line_search import (
     update_penalty,
 )
 from septal.jax.sqp.qp_subproblem import solve_qp_subproblem
-
+from septal.jax.sqp.schema import ParametricNLPProblem, SQPConfig, SQPResult, SQPState
 
 # ---------------------------------------------------------------------------
 # State initialisation
@@ -564,7 +561,6 @@ def state_to_result(
 ) -> SQPResult:
     """Convert a final ``SQPState`` to a user-facing ``SQPResult``."""
     n_g = problem.n_constraints or 0
-    n = problem.n_decision
 
     g_final = None
     if n_g > 0 and problem.constraints is not None:
