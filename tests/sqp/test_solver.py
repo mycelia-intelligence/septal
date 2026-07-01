@@ -145,6 +145,36 @@ class TestSQPSolveUnconstrained:
         assert jnp.all(jnp.isfinite(state.x))
 
 
+class TestSQPSolveBoxActive:
+    """When the unconstrained optimum lies outside the box, the returned
+    solution must respect the variable bounds (no tolerance slack) — the QP
+    box rows are only approximately enforced by ADMM, so the iterate is
+    projected onto [lb, ub]."""
+
+    def test_scan_returns_within_bounds(self, cfg):
+        problem = make_unconstrained(n=2)  # bounds [-2, 2]
+        p = jnp.array([5.0, 5.0])  # unconstrained optimum well outside
+        lb, ub = problem.lb, problem.ub
+
+        state = sqp_solve_scan(problem, jnp.zeros(2), p, cfg)
+
+        assert bool(jnp.all(state.x <= ub))
+        assert bool(jnp.all(state.x >= lb))
+        # Box-active optimum is clip(p, lb, ub) = [2, 2].
+        assert jnp.allclose(state.x, jnp.clip(p, lb, ub), atol=1e-3)
+
+    def test_while_loop_returns_within_bounds(self, cfg):
+        problem = make_unconstrained(n=2)
+        p = jnp.array([5.0, -5.0])
+        lb, ub = problem.lb, problem.ub
+
+        state = sqp_solve_single(problem, jnp.zeros(2), p, cfg)
+
+        assert bool(jnp.all(state.x <= ub))
+        assert bool(jnp.all(state.x >= lb))
+        assert jnp.allclose(state.x, jnp.clip(p, lb, ub), atol=1e-3)
+
+
 class TestSQPSolveConstrained:
     def test_satisfies_constraint(self, cfg):
         """min ½‖x‖² s.t. x[0]+x[1] >= 1 → x*=[0.5, 0.5]."""
