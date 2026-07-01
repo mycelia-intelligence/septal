@@ -1,6 +1,7 @@
 """
 septal — JAX-CasADi NLP solver library.
 """
+
 from septal import casadax
 from septal.casadax import (
     BaseSolver,

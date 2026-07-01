@@ -153,7 +153,7 @@ class TestSQPSolveBoxActive:
 
     def test_scan_returns_within_bounds(self, cfg):
         problem = make_unconstrained(n=2)  # bounds [-2, 2]
-        p = jnp.array([5.0, 5.0])          # unconstrained optimum well outside
+        p = jnp.array([5.0, 5.0])  # unconstrained optimum well outside
         lb, ub = problem.lb, problem.ub
 
         state = sqp_solve_scan(problem, jnp.zeros(2), p, cfg)
