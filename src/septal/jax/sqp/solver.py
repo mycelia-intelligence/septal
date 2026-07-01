@@ -233,8 +233,13 @@ def make_sqp_step(
             cfg,
         )
 
-        # 5. Primal update
+        # 5. Primal update — project onto the variable box. The QP encodes the
+        #    box only as step inequalities solved approximately by ADMM, so the
+        #    step can drift marginally outside [lb, ub]; clipping the iterate
+        #    guarantees the returned solution is bound-feasible and makes the
+        #    projected-gradient stationarity residual below exact.
         x_new = x + alpha * d
+        x_new = jnp.clip(x_new, lb, ub)
 
         # 6. New function values
         f_new = jnp.asarray(problem.objective(x_new, p)).reshape(())
