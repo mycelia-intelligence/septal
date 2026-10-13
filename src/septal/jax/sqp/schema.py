@@ -252,6 +252,12 @@ class SQPConfig:
     # iteration.
     soc_kappa: float = 0.99  # κ_soc — keep correcting only while the SOC
     # trial's θ drops to ≤ κ_soc × the previous one.
+    restoration_kappa: float = 0.9  # κ_resto — the restoration phase exits once
+    # θ ≤ κ_resto · θ(entry point) at a
+    # filter-acceptable iterate (IPOPT §3.3).
+    restoration_max_iter: int = 20  # Consecutive restoration iterations allowed
+    # before the phase is declared stalled (local
+    # infeasibility) and the solver resets.
 
     def __post_init__(self) -> None:
         if self.step_acceptance not in ("filter", "merit"):
@@ -324,6 +330,14 @@ class SQPState(NamedTuple):
     # the feasibility restoration phase was entered.
     n_soc: jnp.ndarray  # integer scalar — number of accepted second-order
     # correction steps.
+    in_restoration: jnp.ndarray  # bool scalar — the feasibility restoration phase
+    # is active (next step minimises θ, not the QP model).
+    theta_resto_entry: jnp.ndarray  # scalar — θ at the iterate where the current
+    # restoration phase was entered (exit reference).
+    resto_count: jnp.ndarray  # integer scalar — consecutive restoration iterations.
+    n_local_infeasible: jnp.ndarray  # integer scalar — number of times the
+    # restoration phase stalled (could not reduce
+    # θ): a local minimiser of the infeasibility.
 
 
 # ---------------------------------------------------------------------------

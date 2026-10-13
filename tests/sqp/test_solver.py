@@ -117,6 +117,26 @@ def make_maratos():
     )
 
 
+def make_inconsistent():
+    """x ∈ [0, 1] with g = 2 − x ≤ 0: infeasible; the violation is minimised at x = 1."""
+
+    def f(x, p):
+        return 0.5 * x[0] ** 2
+
+    def g(x, p):
+        return (2.0 - x[0]).reshape(1)
+
+    return ParametricNLPProblem(
+        objective=f,
+        bounds=[jnp.array([0.0]), jnp.array([1.0])],
+        n_decision=1,
+        n_params=0,
+        constraints=g,
+        constraint_lhs=jnp.array([-jnp.inf]),
+        constraint_rhs=jnp.array([0.0]),
+    )
+
+
 def make_circle_equality():
     """min x[0] + x[1]  s.t.  x[0]² + x[1]² = 1.  Optimal x* = -[1, 1]/√2."""
 
@@ -373,6 +393,31 @@ class TestFilterState:
         state = solve(x0, jnp.zeros((2, 0)))
         assert bool(jnp.all(state.converged))
         assert jnp.allclose(state.x, jnp.tile(jnp.array([1.0, 0.0]), (2, 1)), atol=1e-5)
+
+    def test_inconsistent_constraints_flag_local_infeasibility(self):
+        problem = make_inconsistent()
+        cfg = self._cfg(max_iter=40)
+        state = sqp_solve_single(problem, jnp.array([0.2]), jnp.zeros(0), cfg)
+        assert not bool(state.converged)
+        assert int(state.n_local_infeasible) >= 1
+        assert bool(jnp.isfinite(state.x).all())
+        assert 0.0 <= float(state.x[0]) <= 1.0
+        assert not bool(state.in_restoration)
+        result = state_to_result(state, problem)
+        assert "infeasib" in result.message
+
+    def test_restoration_phase_spans_iterations_when_exit_is_strict(self):
+        # kappa=1e-3 cannot be met by one Gauss–Newton step, so the phase must
+        # continue over several outer iterations (n_restoration > entries).
+        problem = make_wachter_biegler_2000()
+        x0 = jnp.array([-5.0, 0.5, 0.0])
+        strict = sqp_solve_single(
+            problem, x0, jnp.zeros(0), self._cfg(max_iter=300, restoration_kappa=1e-3)
+        )
+        default = sqp_solve_single(problem, x0, jnp.zeros(0), self._cfg(max_iter=300))
+        assert bool(strict.converged) and bool(default.converged)
+        assert not bool(strict.in_restoration) and not bool(default.in_restoration)
+        assert int(strict.n_restoration) >= 1
 
     def test_stagnation_reset_clears_filter(self):
         # Force a reset on every step: patience=1 and alpha_tol above any step.

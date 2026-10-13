@@ -20,7 +20,7 @@ The JAX-native SQP solver has reached high maturity:
 | Exact Lagrangian Hessian | `jax.hessian`; damped BFGS fallback |
 | Hessian inertia correction | τI shift ensuring min eigenvalue ≥ δ |
 | Non-monotone line search | Rolling merit window (M=5); standard Armijo as special case (`step_acceptance="merit"`) |
-| Filter line search (default) | Wächter–Biegler 2005 Alg. I: f-/h-type steps, fixed-size filter, Gauss–Newton feasibility restoration QP |
+| Filter line search (default) | Wächter–Biegler 2005 Alg. I: f-/h-type steps, fixed-size filter; second-order correction (IPOPT §2.4); iterative Gauss–Newton restoration phase with local-infeasibility stall reset |
 | Stagnation detection + reset | Resets Hessian and penalty after 30 stuck iterations |
 | Batched solves | `sqp_solve_scan` via `lax.scan` — constant iteration count for vmap |
 

@@ -25,6 +25,21 @@ or, if the filter is full, evicts the entry with the largest ``θ``.
 
 The initial filter ``{θ ≥ θ_max}`` of the paper is kept as a separate
 scalar ``theta_max`` so it can never be evicted.
+
+Map of equations to functions
+-----------------------------
+* (2.10) acceptability            → :func:`filter_acceptable`
+* (2.11) sufficient decrease,
+  (2.13) switching, (2.14) Armijo → :func:`judge_trial` (:func:`switching_condition`)
+* (2.16) minimum step size        → :func:`min_step_size`
+* (2.17) filter augmentation      → :func:`augment_filter`
+* Alg. I step 4 (backtracking)    → :func:`filter_line_search`
+* Second-order correction (Wächter & Biegler 2006, Math. Prog. 106, §2.4)
+                                  → :func:`soc_correction`
+* §3.2 feasibility restoration    → :func:`restoration_direction`,
+                                    :func:`restoration_line_search`
+  (the multi-iteration phase, its κ_resto exit rule and stall detection live
+  in ``solver.py``)
 """
 
 from __future__ import annotations

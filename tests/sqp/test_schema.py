@@ -104,6 +104,11 @@ class TestSQPConfig:
         assert cfg.soc_max_iter == 4
         assert cfg.soc_kappa == 0.99
 
+    def test_restoration_phase_defaults(self):
+        cfg = SQPConfig()
+        assert cfg.restoration_kappa == 0.9
+        assert cfg.restoration_max_iter == 20
+
     def test_merit_step_acceptance_accepted(self):
         cfg = SQPConfig(step_acceptance="merit")
         assert cfg.step_acceptance == "merit"
@@ -140,10 +145,14 @@ class TestSQPState:
             theta_max=jnp.array(1e4),
             n_restoration=jnp.array(0, dtype=jnp.int32),
             n_soc=jnp.array(0, dtype=jnp.int32),
+            in_restoration=jnp.array(False),
+            theta_resto_entry=jnp.array(0.0),
+            resto_count=jnp.array(0, dtype=jnp.int32),
+            n_local_infeasible=jnp.array(0, dtype=jnp.int32),
         )
         # Must be flattenable by JAX
         leaves, treedef = jax.tree_util.tree_flatten(state)
-        assert len(leaves) == 20
+        assert len(leaves) == 24
         reconstructed = jax.tree_util.tree_unflatten(treedef, leaves)
         assert jnp.allclose(reconstructed.x, state.x)
 
@@ -170,6 +179,10 @@ class TestSQPState:
             theta_max=jnp.array(1e4),
             n_restoration=jnp.array(0, dtype=jnp.int32),
             n_soc=jnp.array(0, dtype=jnp.int32),
+            in_restoration=jnp.array(False),
+            theta_resto_entry=jnp.array(0.0),
+            resto_count=jnp.array(0, dtype=jnp.int32),
+            n_local_infeasible=jnp.array(0, dtype=jnp.int32),
         )
         new_state = state._replace(converged=jnp.array(True))
         assert bool(new_state.converged)

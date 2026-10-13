@@ -157,6 +157,10 @@ def init_sqp_state(
         theta_max=theta_max0,
         n_restoration=jnp.array(0, dtype=jnp.int32),
         n_soc=jnp.array(0, dtype=jnp.int32),
+        in_restoration=jnp.array(False),
+        theta_resto_entry=jnp.zeros((), dtype=jnp.float64),
+        resto_count=jnp.array(0, dtype=jnp.int32),
+        n_local_infeasible=jnp.array(0, dtype=jnp.int32),
     )
 
 
@@ -241,6 +245,8 @@ def make_sqp_step(
         )
         filter_theta_new, filter_f_new = state.filter_theta, state.filter_f
         used_restoration = jnp.array(False)
+        entering_restoration = jnp.array(False)
+        theta_entry = state.theta_resto_entry
 
         if cfg.step_acceptance == "filter":
             # 4a. Wächter–Biegler line-search filter (Alg. I, step 4).
@@ -286,7 +292,9 @@ def make_sqp_step(
                     n_g,
                 )
                 first_rejected = (~accepted) | (alpha_f < alpha0)
-                need_soc = first_rejected & (theta_first >= theta_k)
+                need_soc = (
+                    first_rejected & (theta_first >= theta_k) & ~state.in_restoration
+                )
 
                 def _soc(_: None) -> tuple:
                     return soc_correction(
@@ -327,11 +335,20 @@ def make_sqp_step(
                 f_type = jnp.where(soc_accepted, soc_f_type, f_type)
                 accepted = accepted | soc_accepted
 
-            # 4c. Feasibility restoration when no trial step was acceptable.
+            # 4c. Feasibility restoration phase (W&B 2005 §3.2; IPOPT §3.3).
+            #     Entered when no trial step was acceptable; stays active across
+            #     outer iterations until θ ≤ κ_resto·θ(entry) at a filter-
+            #     acceptable point (exit) or the Gauss–Newton step cannot reduce
+            #     θ (stall → local infeasibility → immediate reset).
             #     lax.cond keeps the second QP off the hot path for
             #     sqp_solve_single; under jax.vmap it lowers to a select and
             #     BOTH branches execute for every batch element.
             if n_g > 0 and problem.constraints is not None:
+                do_resto = state.in_restoration | ~accepted
+                entering_restoration = ~state.in_restoration & ~accepted
+                theta_entry = jnp.where(
+                    state.in_restoration, state.theta_resto_entry, theta_k
+                )
 
                 def _restore(_: None) -> tuple[jnp.ndarray, jnp.ndarray]:
                     d_r = restoration_direction(
@@ -359,14 +376,16 @@ def make_sqp_step(
                 def _keep(_: None) -> tuple[jnp.ndarray, jnp.ndarray]:
                     return alpha_f, d_used
 
-                alpha, d_used = jax.lax.cond(accepted, _keep, _restore, None)
-                used_restoration = ~accepted
+                alpha, d_used = jax.lax.cond(do_resto, _restore, _keep, None)
+                # Multipliers from a QP whose step was rejected are unreliable.
+                lam_used = jnp.where(do_resto, state.lam, lam_used)
+                used_restoration = do_resto
             else:
                 alpha = alpha_f
 
             # 4d. Augment the filter after an h-type step or on restoration
             #     (Alg. I step 6 / eq. 2.17).  f-type steps leave it unchanged.
-            augment = (accepted & ~f_type) | used_restoration
+            augment = (accepted & ~f_type) | entering_restoration
             aug_theta, aug_f = augment_filter(
                 state.filter_theta,
                 state.filter_f,
@@ -452,6 +471,31 @@ def make_sqp_step(
             feas_new = jnp.zeros((), dtype=jnp.float64)
         conv_new = is_converged(stat_new, feas_new, cfg)
 
+        # 9b. Restoration-phase bookkeeping.
+        theta_new = (
+            constraint_violation(g_new, lhs, rhs)
+            if n_g > 0
+            else jnp.zeros((), dtype=jnp.float64)
+        )
+        resto_exit = used_restoration & (
+            theta_new <= cfg.restoration_kappa * theta_entry
+        )
+        resto_count_new = jnp.where(
+            used_restoration, state.resto_count + 1, jnp.array(0, dtype=jnp.int32)
+        )
+        resto_stalled = (
+            used_restoration
+            & ~resto_exit
+            & ((alpha <= 0.0) | (resto_count_new >= cfg.restoration_max_iter))
+        )
+        in_resto_new = used_restoration & ~resto_exit & ~resto_stalled
+        resto_count_final = jnp.where(
+            in_resto_new, resto_count_new, jnp.array(0, dtype=jnp.int32)
+        )
+        theta_entry_new = jnp.where(
+            entering_restoration, theta_k, state.theta_resto_entry
+        )
+
         # 10. Non-monotone merit window: roll left, insert new merit at end.
         merit_window_new = jnp.roll(state.merit_window, -1).at[-1].set(merit_new)
 
@@ -463,7 +507,7 @@ def make_sqp_step(
             state.stagnation_count + 1,
             jnp.array(0, dtype=jnp.int32),
         )
-        do_reset = stagnation_new >= cfg.stagnation_patience
+        do_reset = (stagnation_new >= cfg.stagnation_patience) | resto_stalled
 
         # When stagnating: reset Hessian to scaled identity and deflate penalty.
         H_reset = cfg.bfgs_init_scale * jnp.eye(n, dtype=H_new.dtype)
@@ -501,6 +545,11 @@ def make_sqp_step(
             theta_max=state.theta_max,
             n_restoration=state.n_restoration + used_restoration.astype(jnp.int32),
             n_soc=state.n_soc + soc_accepted.astype(jnp.int32),
+            in_restoration=in_resto_new,
+            theta_resto_entry=theta_entry_new,
+            resto_count=resto_count_final,
+            n_local_infeasible=state.n_local_infeasible
+            + resto_stalled.astype(jnp.int32),
         )
 
     def sqp_step(state: SQPState, _: None) -> tuple[SQPState, None]:
@@ -816,7 +865,15 @@ def state_to_result(
     if n_g > 0 and problem.constraints is not None:
         g_final = problem.constraints(state.x, state.params_p)
 
-    msg = "converged" if bool(state.converged) else "max_iter reached"
+    if bool(state.converged):
+        msg = "converged"
+    elif int(state.n_local_infeasible) > 0:
+        msg = (
+            f"max_iter reached; restoration stalled {int(state.n_local_infeasible)} "
+            "times (possible local infeasibility)"
+        )
+    else:
+        msg = "max_iter reached"
     return SQPResult(
         success=bool(state.converged),
         objective=state.f_val,

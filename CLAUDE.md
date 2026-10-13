@@ -23,7 +23,8 @@ src/septal/
     ├── line_search.py              l1_merit, constraint_violation, merit_directional_deriv,
     │                               update_penalty, backtracking_line_search  ("merit" mode)
     ├── filter.py                   filter_acceptable, augment_filter, switching_condition,
-    │                               min_step_size, filter_line_search, restoration_direction,
+    │                               min_step_size, judge_trial, filter_line_search,
+    │                               soc_correction, restoration_direction,
     │                               restoration_line_search  ("filter" mode, default)
     ├── convergence.py              kkt_residuals, is_converged
     └── factory.py                  ParametricSQPFactory
@@ -60,19 +61,23 @@ pytest tests/sqp/test_solver.py -v
 2. Call `solve_qp_subproblem(...)` → `(d, lam_new)`
 3. Update penalty ρ via `update_penalty` (always computed; only used by `"merit"` mode)
 4. Step acceptance — static branch on `cfg.step_acceptance`:
-   - `"filter"` (default): `filter_line_search` → `(α, accepted, f_type)`; if not accepted
-     and `n_g > 0`, `lax.cond` into feasibility restoration (`restoration_direction` +
-     `restoration_line_search`); augment the filter after an h-type step or restoration
+   - `"filter"` (default): `filter_line_search` → `(α, accepted, f_type)`; if the first
+     trial was rejected without reducing θ, `lax.cond` into `soc_correction` (an accepted
+     correction replaces the step and multipliers); if still nothing accepted, or the
+     restoration phase is active, `lax.cond` into one restoration iteration
+     (`restoration_direction` + `restoration_line_search`, multipliers kept); augment the
+     filter after an h-type step or on restoration entry
    - `"merit"`: directional derivative `D_φ`, non-monotone Armijo backtracking → `α`
 5. `x_new = clip(x + α·d, lb, ub)`
 6. Evaluate `f_new, g_new, merit_new`
 7. Compute `∇L` at `x_new`
 8. Hessian update (BFGS or `regularised_lagrangian_hessian`)
 9. KKT residuals → `stationarity, feasibility`
-10. `converged = is_converged(stat, feas, cfg)`
+10. `converged = is_converged(stat, feas, cfg)`; restoration-phase bookkeeping (exit when
+    `θ_new ≤ restoration_kappa·θ_entry`, stall when `α = 0` or `restoration_max_iter` reached)
 11. Update `merit_window` (rolling buffer for non-monotone LS)
-12. Stagnation detection: if `α < stagnation_alpha_tol` for `stagnation_patience` steps, reset H, ρ
-    and clear the filter
+12. Stagnation detection: if `α < stagnation_alpha_tol` for `stagnation_patience` steps, **or
+    the restoration phase stalled** (local infeasibility), reset H, ρ and clear the filter
 13. Freeze state if `converged` (no-op masked update for scan)
 
 `sqp_solve_scan` uses `lax.scan` (always `max_iter` steps, vmappable).
@@ -91,18 +96,32 @@ by any stored `(θ_j, f_j)`, and `θ < θ_max`) **and**:
 - switching fails and `θ(α) ≤ (1−γ_θ)θ_k` or `f(α) ≤ f_k − γ_f θ_k` → **h-type** (filter
   augmented with `((1−γ_θ)θ_k, f_k − γ_f θ_k)`).
 
-Backtracking stops below `α_min` (eq. 2.16) → **restoration**: Gauss–Newton QP on the
-violated rows (`H_r = JᵀWJ + ζI`, violated rows' bounds relaxed to ±inf, satisfied rows and
-box kept) solved with the same `solve_qp_subproblem` pipeline, then backtracking on θ with
-filter acceptability. The filter is augmented with the current iterate on entry.
-`state.n_restoration` counts entries. Unconstrained problems reduce to plain Armijo on f.
+**Second-order correction** (Wächter & Biegler 2006, §2.4, step A-5.3): if the first trial
+(α₀) is rejected and `θ(x+α₀d) ≥ θ_k`, re-solve the same QP with
+`g_soc = g_k + [g(x_t) − g_k − J(x_t − x)]` (linearisation error at the trial), judge the
+corrected full step with the **original** α₀ and ∇fᵀd, up to `soc_max_iter` (4) times while θ
+shrinks by `soc_kappa` (0.99). Accepted → replaces step and multipliers, `n_soc += 1`.
+Cures the Maratos effect (hs063: 252 → 35 iterations on its slow start).
+
+Backtracking stops below `α_min` (eq. 2.16) → **feasibility restoration phase** (W&B §3.2,
+IPOPT §3.3 exit rule). A mode carried in the state (`in_restoration`, `theta_resto_entry`,
+`resto_count`): on entry the filter is augmented with the current iterate; each iteration
+solves a Gauss–Newton QP on the violated rows (`H_r = JᵀWJ + ζI`, violated rows' bounds
+relaxed to ±inf, satisfied rows and box kept, same `solve_qp_subproblem` pipeline) and
+backtracks on θ requiring `θ_t ≤ (1−γ_θ)θ_k` and filter acceptability; multipliers are kept.
+Exit when `θ ≤ restoration_kappa·θ_entry` (0.9). **Stall** (`α = 0`, or
+`restoration_max_iter` = 20 consecutive restoration iterations) = local minimiser of the
+infeasibility: `n_local_infeasible += 1`, leave the phase and reset H, ρ and the filter
+immediately. `state_to_result` reports stalls in the message when not converged.
+`n_restoration` counts restoration iterations. Unconstrained problems reduce to plain Armijo.
 
 Filter storage is fixed-size (`filter_size`, default 20): empty slots are `+inf`, dominated
 entries are cleared on insert, and a full filter evicts the largest-θ entry. `theta_max`
 (`1e4·max(1, θ(x₀))`) is a separate state scalar.
 
-Costs: under `jax.vmap` the restoration `lax.cond` lowers to a select, so the restoration QP
-runs for every batch element on every iteration. `sqp_solve_single` only pays when it fires.
+Costs: under `jax.vmap` every `lax.cond` lowers to a select, so the SOC QPs (up to
+`soc_max_iter`) and the restoration QP run for every batch element on every iteration.
+`sqp_solve_single` only pays when they fire. Set `soc_max_iter=0` for cheaper batched solves.
 
 ### QP subproblem (`qp_subproblem.py`)
 
@@ -203,10 +222,15 @@ Use `use_exact_hessian=True` for constrained problems with curved manifolds.
   between batched and single LU rounding (observed on the Wächter–Biegler 2000 counterexample:
   a 0.35 difference in `d` at one iterate with `admm_polish=True`, 4e-14 without). Both paths
   converge; do not assert iteration or restoration counts across vmap/non-vmap.
-- **hs063 start 5 (filter mode)**: iterate lands on the box face `x1 = x3 = 0` where the
-  linearised constraints are inconsistent with the bounds; the QP is infeasible and Gauss–Newton
-  restoration has a stationary point of θ on that face. Converges after 252 iterations with 10
-  restorations (merit: 39). Known limitation of one-shot restoration without an interior push.
+- **hs063 start 5 (filter mode)**: iterate can land on the box face `x1 = x3 = 0`, a first- and
+  second-order local minimiser of the constraint violation on the feasible cone, where the QP is
+  infeasible. No descent-based restoration can escape it; the restoration-phase stall detection
+  resets H and the filter immediately. With SOC the trap is avoided (35 iterations).
+- **Filter permissiveness**: an h-type step may raise θ enormously (θ up to θ_max = 1e4·max(1, θ₀))
+  when f drops a lot. That is per the paper; the stall reset recovers from the resulting excursions.
+- **Benchmark "best start" iteration counts are misleading**: the report picks the start with the
+  smallest KKT residual, which can switch between runs. Compare per-start totals from the
+  "Per-Start Detail" table instead.
 
 ## Benchmark config (reference)
 
@@ -231,8 +255,9 @@ SQPConfig(
 ```
 
 Result: 139/140 on 28 problems × 5 Sobol starts (seed=42) in **both** `step_acceptance="filter"`
-(default) and `"merit"`; the single failure is hs023 (see above). Filter is faster on hs039
-(34 vs 80 iters), ackley (7 vs 22), hs071 (9 vs 15); slower on hs063 start 5.
+(default, with SOC and the restoration phase) and `"merit"`; the single failure is hs023 (see
+above). Total iterations over the 100 constrained/parametric starts: filter 2278, merit 2425
+(filter without SOC/phase: 2415 and 2278 with; e.g. hs039 309 vs merit 457, hs063 215 vs 184).
 
 Running the benchmark from septal's venv (nlp-bsuite is not installed in it): add
 `~/Github/nlp-bsuite/scripts` and `~/Github/nlp-bsuite/src` to `sys.path`, import
