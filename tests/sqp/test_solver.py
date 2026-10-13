@@ -10,6 +10,7 @@ from septal.jax.sqp.solver import (
     batch_state_to_result,
     init_sqp_state,
     make_solver,
+    make_sqp_step,
     sqp_solve_scan,
     sqp_solve_single,
     state_to_result,
@@ -377,7 +378,9 @@ class TestFilterState:
     def test_soc_accepted_and_speeds_up_maratos(self):
         problem = make_maratos()
         x0 = jnp.array([jnp.cos(0.5), jnp.sin(0.5)])
-        with_soc = sqp_solve_single(problem, x0, jnp.zeros(0), self._cfg(soc_max_iter=4))
+        with_soc = sqp_solve_single(
+            problem, x0, jnp.zeros(0), self._cfg(soc_max_iter=4)
+        )
         no_soc = sqp_solve_single(problem, x0, jnp.zeros(0), self._cfg(soc_max_iter=0))
         assert bool(with_soc.converged) and bool(no_soc.converged)
         assert jnp.allclose(with_soc.x, jnp.array([1.0, 0.0]), atol=1e-5)
@@ -405,6 +408,30 @@ class TestFilterState:
         assert not bool(state.in_restoration)
         result = state_to_result(state, problem)
         assert "infeasib" in result.message
+
+    def test_restoration_entered_at_feasible_point_stalls_and_resets(self):
+        # max_line_search=0 rejects every SQP trial, so restoration is entered
+        # from a feasible point (theta=0).  The zero restoration step must be a
+        # stall (reset + counted), not an "exit" via 0 <= 0.9 * 0.
+        problem = make_constrained()
+        cfg = self._cfg(max_iter=3, max_line_search=0, soc_max_iter=0)
+        x0 = jnp.array([2.0, 2.0])  # x0 + x1 = 4 >= p = 1: feasible
+        state = sqp_solve_scan(problem, x0, jnp.array([1.0]), cfg)
+        assert int(state.n_local_infeasible) == 3
+        assert not bool(state.in_restoration)
+        assert bool(jnp.all(jnp.isinf(state.filter_theta)))  # reset clears filter
+
+    def test_stall_reset_also_resets_multipliers(self):
+        # Exploded multipliers make the exact Lagrangian Hessian garbage; a
+        # reset that keeps them just reproduces the failure, so lam -> 0.
+        problem = make_constrained()
+        cfg = self._cfg(max_iter=1, max_line_search=0, soc_max_iter=0)
+        step = make_sqp_step(problem, cfg)
+        state = init_sqp_state(jnp.array([2.0, 2.0]), jnp.array([1.0]), problem, cfg)
+        state = state._replace(lam=jnp.array([1e25]))
+        new_state, _ = step(state, None)
+        assert int(new_state.n_local_infeasible) == 1
+        assert float(jnp.abs(new_state.lam).max()) == 0.0
 
     def test_restoration_phase_spans_iterations_when_exit_is_strict(self):
         # kappa=1e-3 cannot be met by one Gauss–Newton step, so the phase must

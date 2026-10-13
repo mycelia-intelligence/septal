@@ -780,3 +780,37 @@ class TestSOCCorrection:
             x[None], d[None], grad_f[None], g_val[None], jac[None]
         )
         assert acc.shape == (1,) and d_soc.shape == (1, 2) and lam.shape == (1, 1)
+
+
+class TestRestorationAtFeasiblePoint:
+    def test_zero_violation_entry_cannot_be_restored(self, cfg):
+        # theta_k = 0: no trial can strictly reduce the violation, so the
+        # restoration line search must report alpha = 0 (a stall), not accept
+        # the zero step via theta_t <= (1 - gamma) * 0.
+        def f(x, p):
+            return -x[0]
+
+        def g(x, p):
+            return (x[0] - 1.0).reshape(1)
+
+        lhs, rhs = jnp.array([-INF]), jnp.array([0.0])
+        lb, ub = jnp.array([-5.0]), jnp.array([5.0])
+        th, fl = empty_filter(4)
+        alpha = restoration_line_search(
+            jnp.array([0.5]),
+            jnp.array([0.0]),
+            jnp.zeros(0),
+            jnp.array(0.0),
+            th,
+            fl,
+            jnp.array(1e4),
+            f,
+            g,
+            lhs,
+            rhs,
+            lb,
+            ub,
+            1,
+            cfg,
+        )
+        assert float(alpha) == 0.0

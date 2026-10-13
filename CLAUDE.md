@@ -213,7 +213,12 @@ Use `use_exact_hessian=True` for constrained problems with curved manifolds.
 
 ## Known issues / gotchas
 
-- **hs023 start 1/5**: exterior-of-ellipse feasible set — Sobol start is trapped outside the feasible region. Not a solver bug; multi-start with more starts or better initialisation is the remedy.
+- **hs023 "trapped start" (fixed)**: one Sobol start used to fail in both modes. Cause: a garbage
+  QP solve left multipliers of order 1e25, the exact Lagrangian Hessian built from them was garbage,
+  and the stagnation/stall reset restored H but kept the multipliers. Resets now also zero `lam`
+  (and recompute `grad_lag`). Restoration additionally requires a *strict* θ decrease and a zero
+  restoration step is always a stall, so a phase entered at a feasible point resets instead of
+  spinning. Both modes are now 140/140.
 - **`0 * inf = NaN`** in polishing RHS — fixed by using `jnp.where(is_act, b_A, 0.0)`.
 - **Polishing Newton-step regression** — on unconstrained problems polishing would accept a pure Newton step `-(Q+σI)⁻¹c` diverging on non-convex. Fixed by Gate 3 (`_has_active` check).
 - **`jnp.linalg.solve` inside lax.scan** — works correctly because the LHS matrix `(Q + σI + ρ·AᵀA)` is constant across ADMM iterations (only RHS changes). XLA caches the factorisation.
@@ -254,12 +259,12 @@ SQPConfig(
 )
 ```
 
-Result: 139/140 on 28 problems × 5 Sobol starts (seed=42) in **both** `step_acceptance="filter"`
-(default, with SOC and the restoration phase) and `"merit"`; the single failure is hs023 (see
-above). Total iterations over the 100 constrained/parametric starts: filter 2278, merit 2425
-(filter without SOC/phase: 2415 and 2278 with; e.g. hs039 309 vs merit 457, hs063 215 vs 184).
+Result: **140/140** on 28 problems × 5 Sobol starts (seed=42) in **both** `step_acceptance="filter"`
+(default, with SOC and the restoration phase) and `"merit"`. Σ iterations over all 140 starts:
+filter 1748, merit 1996; over the 100 constrained/parametric starts: filter 1291, merit 1464.
+The nlp-bsuite report now has a Totals block with these sums plus SOC/restoration/stall counts
+(`scripts/benchmark_sqp.py --step-acceptance {filter,merit} --out ... --json ...`, compare two
+JSON sidecars with `scripts/compare_reports.py`).
 
-Running the benchmark from septal's venv (nlp-bsuite is not installed in it): add
-`~/Github/nlp-bsuite/scripts` and `~/Github/nlp-bsuite/src` to `sys.path`, import
-`benchmark_sqp`, set `benchmark_sqp.SQP_CFG = dataclasses.replace(..., step_acceptance=...)`,
-then `write_report(run_all(), path)`.
+nlp-bsuite is installed editable into septal's `.venv` (`pip install -e ~/Github/nlp-bsuite
+--no-deps`); run the script from `~/Github/nlp-bsuite` with `~/Github/septal/.venv/bin/python`.

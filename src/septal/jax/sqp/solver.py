@@ -477,16 +477,16 @@ def make_sqp_step(
             if n_g > 0
             else jnp.zeros((), dtype=jnp.float64)
         )
-        resto_exit = used_restoration & (
-            theta_new <= cfg.restoration_kappa * theta_entry
-        )
+        # A zero restoration step is always a stall, even when the exit
+        # inequality holds trivially (restoration entered at θ_entry = 0).
+        resto_progress = used_restoration & (alpha > 0.0)
+        resto_exit = resto_progress & (theta_new <= cfg.restoration_kappa * theta_entry)
         resto_count_new = jnp.where(
             used_restoration, state.resto_count + 1, jnp.array(0, dtype=jnp.int32)
         )
-        resto_stalled = (
-            used_restoration
-            & ~resto_exit
-            & ((alpha <= 0.0) | (resto_count_new >= cfg.restoration_max_iter))
+        resto_stalled = used_restoration & (
+            (alpha <= 0.0)
+            | (~resto_exit & (resto_count_new >= cfg.restoration_max_iter))
         )
         in_resto_new = used_restoration & ~resto_exit & ~resto_stalled
         resto_count_final = jnp.where(
@@ -520,16 +520,26 @@ def make_sqp_step(
             do_reset, jnp.array(0, dtype=jnp.int32), stagnation_new
         )
         # A reset also forgets the filter history (a stale filter can block
-        # every step from the reset Hessian).
+        # every step from the reset Hessian) and the multipliers: exploded
+        # multipliers from a failed QP would otherwise rebuild the same
+        # garbage exact Lagrangian Hessian on the next step.
         filter_theta_final = jnp.where(do_reset, jnp.inf, filter_theta_new)
         filter_f_final = jnp.where(do_reset, jnp.inf, filter_f_new)
+        lam_final = jnp.where(do_reset, jnp.zeros_like(lam_used), lam_used)
+        grad_lag_final = jnp.where(
+            do_reset,
+            lagrangian_grad(
+                x_new, lam_final, p, problem.objective, problem.constraints, n_g
+            ),
+            grad_lag_new,
+        )
 
         return SQPState(
             x=x_new,
             params_p=p,
-            lam=lam_used,
+            lam=lam_final,
             hessian=H_final,
-            grad_lag=grad_lag_new,
+            grad_lag=grad_lag_final,
             f_val=f_new,
             penalty=penalty_final,
             merit=merit_new,

@@ -508,9 +508,13 @@ def restoration_line_search(
     """Backtracking on the restoration direction.
 
     A trial ``clip(x + α·d, lb, ub)`` is accepted when it reduces the
-    violation by the filter margin, ``θ(α) ≤ (1 − γ_θ)·θ_k``, **and** is
-    acceptable to the filter — the exit condition of the restoration phase in
-    W&B 2005.  Returns ``α``, or ``0`` if no trial within
+    violation by the filter margin, ``θ(α) ≤ (1 − γ_θ)·θ_k`` **and**
+    ``θ(α) < θ_k`` strictly, and is acceptable to the filter — the exit
+    condition of the restoration phase in W&B 2005.  The strict inequality
+    matters when restoration is entered at a feasible point (``θ_k = 0``,
+    possible only with an inexact QP step): no trial can qualify, ``α = 0``
+    is returned and the caller treats it as a stall instead of accepting a
+    zero step forever.  Returns ``α``, or ``0`` if no trial within
     ``cfg.max_line_search`` qualifies.
     """
     beta = cfg.line_search_beta
@@ -522,7 +526,7 @@ def restoration_line_search(
             x, d, alpha, p, objective, constraints, lhs, rhs, lb, ub, n_g
         )
         in_filter = filter_acceptable(theta_t, f_t, filter_theta, filter_f, theta_max)
-        return in_filter & (theta_t <= theta_suff)
+        return in_filter & (theta_t <= theta_suff) & (theta_t < theta_k)
 
     def cond_fn(carry: tuple) -> jnp.ndarray:
         _, i, accepted = carry
