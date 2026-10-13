@@ -54,14 +54,62 @@ def make_constrained():
     )
 
 
-@pytest.fixture
-def cfg():
+@pytest.fixture(params=["filter", "merit"])
+def cfg(request):
+    """Every solver test runs under both step-acceptance methods."""
     return SQPConfig(
         max_iter=60,
         tol_stationarity=1e-5,
         tol_feasibility=1e-5,
         osqp_tol=1e-7,
         osqp_max_iter=2000,
+        step_acceptance=request.param,
+    )
+
+
+def make_wachter_biegler_2000():
+    """Wächter & Biegler (2000) counterexample on which merit line searches
+    can converge to an infeasible point:
+
+        min x[0]  s.t.  x[0]² - x[1] + 1 = 0,  x[0] - x[2] - ½ = 0,  x[1], x[2] >= 0
+
+    Optimal x* = [0.5, 1.25, 0].
+    """
+
+    def f(x, p):
+        return x[0]
+
+    def g(x, p):
+        return jnp.array([x[0] ** 2 - x[1] + 1.0, x[0] - x[2] - 0.5])
+
+    return ParametricNLPProblem(
+        objective=f,
+        bounds=[jnp.array([-10.0, 0.0, 0.0]), jnp.full(3, 10.0)],
+        n_decision=3,
+        n_params=0,
+        constraints=g,
+        constraint_lhs=jnp.zeros(2),
+        constraint_rhs=jnp.zeros(2),
+    )
+
+
+def make_circle_equality():
+    """min x[0] + x[1]  s.t.  x[0]² + x[1]² = 1.  Optimal x* = -[1, 1]/√2."""
+
+    def f(x, p):
+        return x[0] + x[1]
+
+    def g(x, p):
+        return (x[0] ** 2 + x[1] ** 2 - 1.0).reshape(1)
+
+    return ParametricNLPProblem(
+        objective=f,
+        bounds=[jnp.full(2, -3.0), jnp.full(2, 3.0)],
+        n_decision=2,
+        n_params=0,
+        constraints=g,
+        constraint_lhs=jnp.array([0.0]),
+        constraint_rhs=jnp.array([0.0]),
     )
 
 
@@ -191,6 +239,109 @@ class TestSQPSolveConstrained:
         problem = make_constrained()
         state = sqp_solve_scan(problem, jnp.zeros(2), jnp.array([1.0]), cfg)
         assert float(state.f_val) == pytest.approx(0.25, abs=5e-3)
+
+
+class TestFilterState:
+    """State bookkeeping specific to step_acceptance="filter"."""
+
+    def _cfg(self, **kw):
+        base = dict(
+            max_iter=100,
+            tol_stationarity=1e-6,
+            tol_feasibility=1e-6,
+            step_acceptance="filter",
+        )
+        base.update(kw)
+        return SQPConfig(**base)
+
+    def test_init_state_filter_fields(self):
+        problem = make_constrained()
+        cfg = self._cfg(filter_size=7)
+        x0 = jnp.array([0.0, 0.0])  # g = 1 - 0 - 0 = 1 > 0  -> theta0 = 1
+        state = init_sqp_state(x0, jnp.array([1.0]), problem, cfg)
+        assert state.filter_theta.shape == (7,) and state.filter_f.shape == (7,)
+        assert bool(jnp.all(jnp.isinf(state.filter_theta)))
+        assert float(state.theta_max) == pytest.approx(1e4 * max(1.0, 1.0))
+        assert int(state.n_restoration) == 0
+
+    def test_theta_max_scales_with_initial_violation(self):
+        problem = make_constrained()
+        state = init_sqp_state(jnp.zeros(2), jnp.array([5.0]), problem, self._cfg())
+        assert float(state.theta_max) == pytest.approx(1e4 * 5.0)
+
+    def test_curved_equality_from_infeasible_start_converges(self):
+        problem = make_circle_equality()
+        state = sqp_solve_single(
+            problem, jnp.array([2.0, 2.0]), jnp.zeros(0), self._cfg()
+        )
+        assert bool(state.converged)
+        assert jnp.allclose(state.x, -jnp.ones(2) / jnp.sqrt(2.0), atol=1e-4)
+
+    def test_restoration_phase_fires_and_solver_recovers(self):
+        # From this start the SQP step is rejected by the filter; the solver
+        # must enter feasibility restoration and still reach x* = [0.5, 1.25, 0].
+        problem = make_wachter_biegler_2000()
+        cfg = self._cfg(max_iter=200)
+        state = sqp_solve_single(
+            problem, jnp.array([-5.0, 0.5, 0.0]), jnp.zeros(0), cfg
+        )
+        assert int(state.n_restoration) > 0
+        assert bool(state.converged)
+        assert jnp.allclose(state.x, jnp.array([0.5, 1.25, 0.0]), atol=1e-4)
+
+    def test_restoration_under_vmap(self):
+        # lax.cond lowers to a select under vmap, so the restoration QP runs
+        # for every batch element on every step; both branches must stay
+        # finite and the batch must converge.  (The restoration count is not
+        # asserted: the QP polishing gate can flip under batched LU rounding,
+        # so the vmapped trajectory need not match the single-solve one.)
+        problem = make_wachter_biegler_2000()
+        cfg = self._cfg(max_iter=200)
+        solve = jax.jit(jax.vmap(lambda x0, p: sqp_solve_scan(problem, x0, p, cfg)))
+        x0 = jnp.array([[-5.0, 0.5, 0.0], [-2.0, 3.0, 1.0]])
+        state = solve(x0, jnp.zeros((2, 0)))
+        assert bool(jnp.all(state.converged))
+        assert jnp.allclose(
+            state.x, jnp.tile(jnp.array([0.5, 1.25, 0.0]), (2, 1)), atol=1e-4
+        )
+
+    def test_h_type_steps_populate_filter(self):
+        # From an infeasible start the first accepted step is h-type (switching
+        # condition fails while theta is large), so the filter gains an entry.
+        problem = make_circle_equality()
+        state = sqp_solve_single(
+            problem, jnp.array([2.0, 2.0]), jnp.zeros(0), self._cfg()
+        )
+        assert bool(jnp.any(jnp.isfinite(state.filter_theta)))
+
+    def test_scan_and_while_loop_agree_in_filter_mode(self):
+        problem = make_circle_equality()
+        cfg = self._cfg()
+        x0 = jnp.array([2.0, 2.0])
+        s1 = sqp_solve_single(problem, x0, jnp.zeros(0), cfg)
+        s2 = sqp_solve_scan(problem, x0, jnp.zeros(0), cfg)
+        assert jnp.allclose(s1.x, s2.x, atol=1e-6)
+        assert int(s1.n_restoration) == int(s2.n_restoration)
+
+    def test_merit_mode_leaves_filter_empty(self):
+        problem = make_circle_equality()
+        cfg = SQPConfig(max_iter=100, step_acceptance="merit")
+        state = sqp_solve_single(problem, jnp.array([2.0, 2.0]), jnp.zeros(0), cfg)
+        assert bool(jnp.all(jnp.isinf(state.filter_theta)))
+        assert int(state.n_restoration) == 0
+
+    def test_stagnation_reset_clears_filter(self):
+        # Force a reset on every step: patience=1 and alpha_tol above any step.
+        problem = make_circle_equality()
+        cfg = self._cfg(
+            max_iter=3,
+            stagnation_patience=1,
+            stagnation_alpha_tol=10.0,
+            tol_stationarity=1e-12,
+            tol_feasibility=1e-12,
+        )
+        state = sqp_solve_scan(problem, jnp.array([2.0, 2.0]), jnp.zeros(0), cfg)
+        assert bool(jnp.all(jnp.isinf(state.filter_theta)))
 
 
 # ---------------------------------------------------------------------------

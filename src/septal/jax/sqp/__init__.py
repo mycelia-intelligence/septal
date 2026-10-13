@@ -23,6 +23,12 @@ jax.config.update("jax_enable_x64", True)
 
 from septal.jax.sqp.convergence import is_converged, kkt_residuals
 from septal.jax.sqp.factory import ParametricSQPFactory
+from septal.jax.sqp.filter import (
+    augment_filter,
+    filter_acceptable,
+    filter_line_search,
+    restoration_direction,
+)
 from septal.jax.sqp.hessian import bfgs_update, lagrangian_grad
 from septal.jax.sqp.line_search import (
     backtracking_line_search,
@@ -67,6 +73,11 @@ __all__ = [
     # Hessian
     "bfgs_update",
     "lagrangian_grad",
+    # Filter (Wächter & Biegler 2005)
+    "filter_acceptable",
+    "augment_filter",
+    "filter_line_search",
+    "restoration_direction",
     # Line search
     "l1_merit",
     "backtracking_line_search",

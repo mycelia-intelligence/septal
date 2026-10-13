@@ -214,6 +214,43 @@ class SQPConfig:
         True  # Deflate penalty to penalty_init on stagnation.
     )
 
+    # ── Step acceptance: filter (Wächter & Biegler 2005) or L1 merit ─────────
+
+    step_acceptance: str = "filter"  # "filter" — line-search filter method
+    # (Wächter & Biegler, SIAM J. Optim. 16(1),
+    # 2005, Algorithm I).  No penalty parameter;
+    # a trial point is accepted when it improves
+    # either the constraint violation θ or the
+    # objective f against every stored (θ, f)
+    # pair.  "merit" — L1 exact-penalty Armijo
+    # backtracking (non-monotone window).
+    filter_gamma_theta: float = 1e-5  # γ_θ — relative margin on θ in the
+    # sufficient-decrease test (2.11) and in filter
+    # augmentation (2.17).
+    filter_gamma_f: float = 1e-5  # γ_f — margin on f, scaled by θ_k, in (2.11)
+    # and (2.17).
+    filter_delta: float = 1.0  # δ in the switching condition (2.13).
+    filter_s_theta: float = 1.1  # s_θ exponent on θ_k in (2.13) / (2.16).
+    filter_s_f: float = 2.3  # s_f exponent on −∇fᵀd in (2.13) / (2.16).
+    filter_eta_f: float = 1e-4  # η_f — Armijo constant for f-type steps (2.14).
+    filter_gamma_alpha: float = 0.05  # γ_α — safety factor in the minimum step
+    # size α_min (2.16).  α < α_min triggers the
+    # feasibility restoration phase.
+    filter_theta_max_factor: float = 1e4  # θ_max = factor · max(1, θ(x₀)); any
+    # trial with θ ≥ θ_max is rejected outright.
+    filter_size: int = 20  # Fixed capacity of the stored filter (scan/vmap
+    # require static shapes).  Empty slots hold +inf.
+    # When full, the entry with the largest θ is evicted.
+    restoration_reg: float = 1e-4  # ζ — Tikhonov term added to the Gauss–Newton
+    # Hessian JᵀWJ of the feasibility restoration QP.
+
+    def __post_init__(self) -> None:
+        if self.step_acceptance not in ("filter", "merit"):
+            raise ValueError(
+                "step_acceptance must be 'filter' or 'merit', "
+                f"got {self.step_acceptance!r}"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Solver state  (JAX pytree via NamedTuple)
@@ -268,6 +305,14 @@ class SQPState(NamedTuple):
     # recent merit values for non-monotone line search.
     stagnation_count: jnp.ndarray  # integer scalar — consecutive near-zero steps.
     alpha_last: jnp.ndarray  # scalar — step length accepted on last iteration.
+    filter_theta: jnp.ndarray  # shape (filter_size,) — θ coordinate of each stored
+    # filter entry; +inf marks an empty slot.
+    filter_f: jnp.ndarray  # shape (filter_size,) — f coordinate of each stored
+    # filter entry; +inf marks an empty slot.
+    theta_max: jnp.ndarray  # scalar — hard upper limit on θ for any trial point
+    # (W&B 2005 initial filter {θ ≥ θ_max}).
+    n_restoration: jnp.ndarray  # integer scalar — number of iterations in which
+    # the feasibility restoration phase was entered.
 
 
 # ---------------------------------------------------------------------------

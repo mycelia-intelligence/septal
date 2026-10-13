@@ -28,6 +28,13 @@ import numpy as np
 from scipy.stats import qmc
 
 from septal.jax.sqp.convergence import is_converged
+from septal.jax.sqp.filter import (
+    augment_filter,
+    empty_filter,
+    filter_line_search,
+    restoration_direction,
+    restoration_line_search,
+)
 from septal.jax.sqp.hessian import (
     bfgs_update,
     lagrangian_grad,
@@ -35,6 +42,7 @@ from septal.jax.sqp.hessian import (
 )
 from septal.jax.sqp.line_search import (
     backtracking_line_search,
+    constraint_violation,
     l1_merit,
     merit_directional_deriv,
     update_penalty,
@@ -117,8 +125,14 @@ def init_sqp_state(
             jnp.max(jnp.maximum(g0 - rhs, 0.0)),
             jnp.max(jnp.maximum(lhs - g0, 0.0)),
         )
+        theta0 = constraint_violation(g0, lhs, rhs)
     else:
         feas0 = jnp.zeros((), dtype=jnp.float64)
+        theta0 = jnp.zeros((), dtype=jnp.float64)
+
+    # Filter initialisation (W&B 2005): F_0 = {θ ≥ θ_max}, θ_max = c·max(1, θ(x₀)).
+    filter_theta0, filter_f0 = empty_filter(cfg.filter_size)
+    theta_max0 = cfg.filter_theta_max_factor * jnp.maximum(1.0, theta0)
 
     return SQPState(
         x=x0,
@@ -136,6 +150,10 @@ def init_sqp_state(
         merit_window=jnp.full(cfg.nonmonotone_window, merit0, dtype=jnp.float64),
         stagnation_count=jnp.array(0, dtype=jnp.int32),
         alpha_last=jnp.array(1.0, dtype=jnp.float64),
+        filter_theta=filter_theta0,
+        filter_f=filter_f0,
+        theta_max=theta_max0,
+        n_restoration=jnp.array(0, dtype=jnp.int32),
     )
 
 
@@ -212,33 +230,117 @@ def make_sqp_step(
             cfg.penalty_decrease_factor,
         )
 
-        # 4. Directional derivative estimate and line search
-        #    Non-monotone reference: max merit over the last M iterates.
-        reference_merit = jnp.max(state.merit_window)
-        dir_deriv = merit_directional_deriv(
-            grad_f, d, g_val, lhs, rhs, penalty_new, n_g
+        # 4. Step acceptance — static branch on cfg.step_acceptance.
+        theta_k = (
+            constraint_violation(g_val, lhs, rhs)
+            if n_g > 0
+            else jnp.zeros((), dtype=jnp.float64)
         )
-        alpha = backtracking_line_search(
-            x,
-            d,
-            p,
-            reference_merit,
-            dir_deriv,
-            penalty_new,
-            problem.objective,
-            problem.constraints,
-            lhs,
-            rhs,
-            n_g,
-            cfg,
-        )
+        filter_theta_new, filter_f_new = state.filter_theta, state.filter_f
+        used_restoration = jnp.array(False)
+
+        if cfg.step_acceptance == "filter":
+            # 4a. Wächter–Biegler line-search filter (Alg. I, step 4).
+            grad_f_d = grad_f @ d
+            alpha_f, accepted, f_type = filter_line_search(
+                x,
+                d,
+                p,
+                theta_k,
+                f_val,
+                grad_f_d,
+                state.filter_theta,
+                state.filter_f,
+                state.theta_max,
+                problem.objective,
+                problem.constraints,
+                lhs,
+                rhs,
+                lb,
+                ub,
+                n_g,
+                cfg,
+            )
+
+            # 4b. Feasibility restoration when no trial step was acceptable.
+            #     lax.cond keeps the second QP off the hot path for
+            #     sqp_solve_single; under jax.vmap it lowers to a select and
+            #     BOTH branches execute for every batch element.
+            if n_g > 0 and problem.constraints is not None:
+
+                def _restore(_: None) -> tuple[jnp.ndarray, jnp.ndarray]:
+                    d_r = restoration_direction(
+                        x, p, g_val, jac_g, lhs, rhs, lb, ub, n, n_g, cfg
+                    )
+                    alpha_r = restoration_line_search(
+                        x,
+                        d_r,
+                        p,
+                        theta_k,
+                        state.filter_theta,
+                        state.filter_f,
+                        state.theta_max,
+                        problem.objective,
+                        problem.constraints,
+                        lhs,
+                        rhs,
+                        lb,
+                        ub,
+                        n_g,
+                        cfg,
+                    )
+                    return alpha_r, d_r
+
+                def _keep(_: None) -> tuple[jnp.ndarray, jnp.ndarray]:
+                    return alpha_f, d
+
+                alpha, d_used = jax.lax.cond(accepted, _keep, _restore, None)
+                used_restoration = ~accepted
+            else:
+                alpha, d_used = alpha_f, d
+
+            # 4c. Augment the filter after an h-type step or on restoration
+            #     (Alg. I step 6 / eq. 2.17).  f-type steps leave it unchanged.
+            augment = (accepted & ~f_type) | used_restoration
+            aug_theta, aug_f = augment_filter(
+                state.filter_theta,
+                state.filter_f,
+                theta_k,
+                f_val,
+                cfg.filter_gamma_theta,
+                cfg.filter_gamma_f,
+            )
+            filter_theta_new = jnp.where(augment, aug_theta, state.filter_theta)
+            filter_f_new = jnp.where(augment, aug_f, state.filter_f)
+        else:
+            # 4d. L1 merit, non-monotone Armijo backtracking.
+            #     Reference level: max merit over the last M iterates.
+            reference_merit = jnp.max(state.merit_window)
+            dir_deriv = merit_directional_deriv(
+                grad_f, d, g_val, lhs, rhs, penalty_new, n_g
+            )
+            alpha = backtracking_line_search(
+                x,
+                d,
+                p,
+                reference_merit,
+                dir_deriv,
+                penalty_new,
+                problem.objective,
+                problem.constraints,
+                lhs,
+                rhs,
+                n_g,
+                cfg,
+            )
+            d_used = d
 
         # 5. Primal update — project onto the variable box. The QP encodes the
         #    box only as step inequalities solved approximately by ADMM, so the
         #    step can drift marginally outside [lb, ub]; clipping the iterate
         #    guarantees the returned solution is bound-feasible and makes the
         #    projected-gradient stationarity residual below exact.
-        x_new = x + alpha * d
+        x_new = x + alpha * d_used
         x_new = jnp.clip(x_new, lb, ub)
 
         # 6. New function values
@@ -308,6 +410,10 @@ def make_sqp_step(
         stagnation_final = jnp.where(
             do_reset, jnp.array(0, dtype=jnp.int32), stagnation_new
         )
+        # A reset also forgets the filter history (a stale filter can block
+        # every step from the reset Hessian).
+        filter_theta_final = jnp.where(do_reset, jnp.inf, filter_theta_new)
+        filter_f_final = jnp.where(do_reset, jnp.inf, filter_f_new)
 
         return SQPState(
             x=x_new,
@@ -325,6 +431,10 @@ def make_sqp_step(
             merit_window=merit_window_new,
             stagnation_count=stagnation_final,
             alpha_last=alpha,
+            filter_theta=filter_theta_final,
+            filter_f=filter_f_final,
+            theta_max=state.theta_max,
+            n_restoration=state.n_restoration + used_restoration.astype(jnp.int32),
         )
 
     def sqp_step(state: SQPState, _: None) -> tuple[SQPState, None]:
