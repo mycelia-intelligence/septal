@@ -183,6 +183,46 @@ def _eval_trial(
     return theta_t, f_t
 
 
+def judge_trial(
+    theta_t: jnp.ndarray,
+    f_t: jnp.ndarray,
+    alpha: jnp.ndarray,
+    grad_f_d: jnp.ndarray,
+    theta_k: jnp.ndarray,
+    f_k: jnp.ndarray,
+    filter_theta: jnp.ndarray,
+    filter_f: jnp.ndarray,
+    theta_max: jnp.ndarray,
+    cfg: SQPConfig,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Accept or reject one trial pair ``(θ_t, f_t)`` (W&B 2005, Alg. I steps 4.3–4.4).
+
+    The trial must be acceptable to the filter (2.10) and then satisfy either
+
+    * **f-type**: the switching condition (2.13) holds and the Armijo condition
+      ``f_t ≤ f_k + η_f·α·∇fᵀd`` (2.14) holds — the filter is *not* augmented
+      afterwards; or
+    * **h-type**: the switching condition fails and the sufficient-decrease
+      test ``θ_t ≤ (1−γ_θ)θ_k  or  f_t ≤ f_k − γ_f·θ_k`` (2.11) holds.
+
+    A trial for which the switching condition holds but Armijo fails is
+    rejected outright (it is not demoted to the h-type test).
+
+    Returns
+    -------
+    accepted, is_f_type : bool scalars
+    """
+    in_filter = filter_acceptable(theta_t, f_t, filter_theta, filter_f, theta_max)
+    switching = switching_condition(alpha, grad_f_d, theta_k, cfg)
+    armijo = f_t <= f_k + cfg.filter_eta_f * alpha * grad_f_d
+    suff_dec = (theta_t <= (1.0 - cfg.filter_gamma_theta) * theta_k) | (
+        f_t <= f_k - cfg.filter_gamma_f * theta_k
+    )
+    f_type = switching & armijo
+    h_type = ~switching & suff_dec
+    return in_filter & (f_type | h_type), in_filter & f_type
+
+
 def filter_line_search(
     x: jnp.ndarray,
     d: jnp.ndarray,
@@ -205,18 +245,10 @@ def filter_line_search(
     """Backtracking line search with filter acceptance (W&B 2005, Alg. I step 4).
 
     Starting from ``α = cfg.line_search_alpha0`` and shrinking by
-    ``cfg.line_search_beta``, each trial ``clip(x + α·d, lb, ub)`` is accepted
-    when
-
-    1. it is acceptable to the filter and ``θ < θ_max`` (eq. 2.10), and
-    2. either the switching condition (2.13) holds and the Armijo condition
-       ``f(α) ≤ f_k + η_f·α·∇fᵀd`` (2.14) is satisfied — an **f-type** step —
-       or the switching condition fails and the sufficient-decrease test
-       ``θ(α) ≤ (1−γ_θ)θ_k  or  f(α) ≤ f_k − γ_f·θ_k`` (2.11) holds — an
-       **h-type** step.
-
-    The loop stops when a trial is accepted, when ``α`` drops below
-    ``min_step_size`` (2.16) or after ``cfg.max_line_search`` trials.
+    ``cfg.line_search_beta``, each trial ``clip(x + α·d, lb, ub)`` is judged by
+    :func:`judge_trial`.  The loop stops when a trial is accepted, when ``α``
+    drops below :func:`min_step_size` (2.16) or after ``cfg.max_line_search``
+    trials.
 
     Returns
     -------
@@ -230,20 +262,23 @@ def filter_line_search(
     beta = cfg.line_search_beta
     alpha0 = jnp.asarray(cfg.line_search_alpha0, dtype=x.dtype)
     alpha_min = min_step_size(grad_f_d, theta_k, cfg)
-    theta_suff = (1.0 - cfg.filter_gamma_theta) * theta_k
-    f_suff = f_k - cfg.filter_gamma_f * theta_k
 
     def _judge(alpha: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         theta_t, f_t = _eval_trial(
             x, d, alpha, p, objective, constraints, lhs, rhs, lb, ub, n_g
         )
-        in_filter = filter_acceptable(theta_t, f_t, filter_theta, filter_f, theta_max)
-        switching = switching_condition(alpha, grad_f_d, theta_k, cfg)
-        armijo = f_t <= f_k + cfg.filter_eta_f * alpha * grad_f_d
-        suff_dec = (theta_t <= theta_suff) | (f_t <= f_suff)
-        f_type = switching & armijo
-        h_type = ~switching & suff_dec
-        return in_filter & (f_type | h_type), in_filter & f_type
+        return judge_trial(
+            theta_t,
+            f_t,
+            alpha,
+            grad_f_d,
+            theta_k,
+            f_k,
+            filter_theta,
+            filter_f,
+            theta_max,
+            cfg,
+        )
 
     def cond_fn(carry: tuple) -> jnp.ndarray:
         alpha, i, accepted, _ = carry
@@ -259,6 +294,135 @@ def filter_line_search(
     alpha, _, accepted, f_type = jax.lax.while_loop(cond_fn, body_fn, init)
     alpha = jnp.where(accepted, alpha, jnp.zeros_like(alpha0))
     return alpha, accepted, accepted & f_type
+
+
+# ---------------------------------------------------------------------------
+# Second-order correction
+# ---------------------------------------------------------------------------
+
+
+def soc_correction(
+    x: jnp.ndarray,
+    d: jnp.ndarray,
+    p: jnp.ndarray,
+    theta_k: jnp.ndarray,
+    f_k: jnp.ndarray,
+    grad_f_d: jnp.ndarray,
+    g_val: jnp.ndarray,
+    jac_g: jnp.ndarray,
+    hessian: jnp.ndarray,
+    grad_f: jnp.ndarray,
+    lam_prev: jnp.ndarray,
+    filter_theta: jnp.ndarray,
+    filter_f: jnp.ndarray,
+    theta_max: jnp.ndarray,
+    objective: Callable,
+    constraints: Callable,
+    lhs: jnp.ndarray,
+    rhs: jnp.ndarray,
+    lb: jnp.ndarray,
+    ub: jnp.ndarray,
+    n: int,
+    n_g: int,
+    cfg: SQPConfig,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Second-order correction steps (Wächter & Biegler 2006, §2.4, step A-5.3).
+
+    Counteracts the Maratos effect: when the full step ``x + α₀·d`` increases
+    the constraint violation because of curvature, the QP is re-solved with
+    the constraint values shifted by the linearisation error observed at the
+    trial point,
+
+        g_soc = g_k + [ g(x_t) − g_k − J_k (x_t − x_k) ],
+
+    and the corrected trial ``clip(x + α₀·d_soc, lb, ub)`` is judged with the
+    **original** ``α₀`` and ``∇fᵀd`` (:func:`judge_trial`).  Up to
+    ``cfg.soc_max_iter`` corrections are tried, continuing only while the
+    corrected trial's θ shrinks to at most ``cfg.soc_kappa`` × the previous
+    trial's θ.  The caller decides whether to invoke this at all (first trial
+    rejected and ``θ(x + α₀·d) ≥ θ_k``).
+
+    Returns
+    -------
+    accepted, is_f_type : bool scalars
+    d_soc : (n,)   last corrected direction (finite even when rejected)
+    lam_soc : (n_g,)  multipliers of the last corrected QP
+    """
+    alpha0 = jnp.asarray(cfg.line_search_alpha0, dtype=x.dtype)
+    x_first = jnp.clip(x + alpha0 * d, lb, ub)
+    theta_first = constraint_violation(constraints(x_first, p).reshape(n_g), lhs, rhs)
+
+    def _lin_error(x_t: jnp.ndarray) -> jnp.ndarray:
+        return constraints(x_t, p).reshape(n_g) - g_val - jac_g @ (x_t - x)  # type: ignore[no-any-return]
+
+    def cond_fn(carry: tuple) -> jnp.ndarray:
+        k, _, _, _, _, accepted, keep_going = carry
+        return (~accepted) & keep_going & (k < cfg.soc_max_iter)  # type: ignore[no-any-return]
+
+    def body_fn(carry: tuple) -> tuple:
+        k, x_t, theta_prev, _, _, _, _ = carry
+        g_soc = g_val + _lin_error(x_t)
+        d_soc, lam_soc = solve_qp_subproblem(
+            hessian,
+            grad_f,
+            jac_g,
+            g_soc,
+            x,
+            lb,
+            ub,
+            lhs,
+            rhs,
+            n,
+            n_g,
+            cfg,
+            lam_prev=lam_prev,
+        )
+        x_soc = jnp.clip(x + alpha0 * d_soc, lb, ub)
+        theta_soc, f_soc = _eval_trial(
+            x, d_soc, alpha0, p, objective, constraints, lhs, rhs, lb, ub, n_g
+        )
+        accepted, f_type = judge_trial(
+            theta_soc,
+            f_soc,
+            alpha0,
+            grad_f_d,
+            theta_k,
+            f_k,
+            filter_theta,
+            filter_f,
+            theta_max,
+            cfg,
+        )
+        keep_going = theta_soc <= cfg.soc_kappa * theta_prev
+        return k + 1, x_soc, theta_soc, d_soc, lam_soc, accepted, keep_going
+
+    init = (
+        jnp.array(0, dtype=jnp.int32),
+        x_first,
+        theta_first,
+        d,
+        lam_prev,
+        jnp.array(False),
+        jnp.array(True),
+    )
+    _, _, _, d_soc, lam_soc, accepted, _ = jax.lax.while_loop(cond_fn, body_fn, init)
+    # f_type is recomputed from the final trial so that a rejected loop reports False.
+    theta_last, f_last = _eval_trial(
+        x, d_soc, alpha0, p, objective, constraints, lhs, rhs, lb, ub, n_g
+    )
+    _, f_type = judge_trial(
+        theta_last,
+        f_last,
+        alpha0,
+        grad_f_d,
+        theta_k,
+        f_k,
+        filter_theta,
+        filter_f,
+        theta_max,
+        cfg,
+    )
+    return accepted, accepted & f_type, d_soc, lam_soc
 
 
 # ---------------------------------------------------------------------------

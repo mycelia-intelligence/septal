@@ -9,9 +9,11 @@ from septal.jax.sqp.filter import (
     empty_filter,
     filter_acceptable,
     filter_line_search,
+    judge_trial,
     min_step_size,
     restoration_direction,
     restoration_line_search,
+    soc_correction,
     switching_condition,
 )
 from septal.jax.sqp.line_search import constraint_violation
@@ -568,3 +570,213 @@ class TestRestorationLineSearch:
             cfg,
         )
         assert float(alpha) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# judge_trial
+# ---------------------------------------------------------------------------
+
+
+class TestJudgeTrial:
+    def _judge(
+        self, theta_t, f_t, alpha, grad_f_d, theta_k, f_k, cfg, filt=None, theta_max=1e4
+    ):
+        th, fl = filt if filt is not None else empty_filter(4)
+        return judge_trial(
+            jnp.array(theta_t),
+            jnp.array(f_t),
+            jnp.array(alpha),
+            jnp.array(grad_f_d),
+            jnp.array(theta_k),
+            jnp.array(f_k),
+            th,
+            fl,
+            jnp.array(theta_max),
+            cfg,
+        )
+
+    def test_f_type(self, cfg):
+        # feasible, descent, Armijo satisfied
+        acc, ft = self._judge(0.0, 0.5, 1.0, -1.0, 0.0, 1.0, cfg)
+        assert bool(acc) and bool(ft)
+
+    def test_f_type_armijo_fails_is_rejected_not_demoted(self, cfg):
+        # switching holds (theta_k=0, descent) but f increased -> rejected outright
+        acc, ft = self._judge(0.0, 1.5, 1.0, -1.0, 0.0, 1.0, cfg)
+        assert not bool(acc) and not bool(ft)
+
+    def test_h_type(self, cfg):
+        # ascent direction -> switching fails; theta decreased -> h-type
+        acc, ft = self._judge(0.5, 2.0, 1.0, 1.0, 1.0, 1.0, cfg)
+        assert bool(acc) and not bool(ft)
+
+    def test_blocked_by_filter(self, cfg):
+        acc, ft = self._judge(
+            0.5, 2.0, 1.0, 1.0, 1.0, 1.0, cfg, filt=_filter([(0.0, -5.0)])
+        )
+        assert not bool(acc)
+
+    def test_blocked_by_theta_max(self, cfg):
+        acc, _ = self._judge(0.5, 2.0, 1.0, 1.0, 1.0, 1.0, cfg, theta_max=0.4)
+        assert not bool(acc)
+
+
+# ---------------------------------------------------------------------------
+# Second-order correction (Maratos example, Nocedal & Wright Ex. 15.4)
+# ---------------------------------------------------------------------------
+
+
+def _maratos():
+    def f(x, p):
+        return 2.0 * (x[0] ** 2 + x[1] ** 2 - 1.0) - x[0]
+
+    def g(x, p):
+        return (x[0] ** 2 + x[1] ** 2 - 1.0).reshape(1)
+
+    lhs = rhs = jnp.array([0.0])
+    lb, ub = jnp.full(2, -5.0), jnp.full(2, 5.0)
+    return f, g, lhs, rhs, lb, ub
+
+
+class TestSOCCorrection:
+    def _setup(self, t=0.5):
+        f, g, lhs, rhs, lb, ub = _maratos()
+        x = jnp.array([jnp.cos(t), jnp.sin(t)])
+        p = jnp.zeros(0)
+        grad_f = jax.grad(f)(x, p)
+        g_val = g(x, p)
+        jac = jax.jacfwd(g)(x, p)
+        d = jnp.array([x[1] ** 2, -x[0] * x[1]])  # SQP step with H = I
+        return f, g, lhs, rhs, lb, ub, x, p, grad_f, g_val, jac, d
+
+    def test_full_step_rejected_without_soc(self, cfg):
+        f, g, lhs, rhs, lb, ub, x, p, grad_f, g_val, jac, d = self._setup()
+        th, fl = empty_filter(4)
+        alpha, accepted, _ = filter_line_search(
+            x,
+            d,
+            p,
+            jnp.array(0.0),
+            f(x, p),
+            grad_f @ d,
+            th,
+            fl,
+            jnp.array(1e4),
+            f,
+            g,
+            lhs,
+            rhs,
+            lb,
+            ub,
+            1,
+            cfg,
+        )
+        assert bool(accepted) and float(alpha) < 1.0  # Maratos: only a short step
+
+    def test_soc_step_accepted_and_closer_to_optimum(self, cfg):
+        f, g, lhs, rhs, lb, ub, x, p, grad_f, g_val, jac, d = self._setup()
+        th, fl = empty_filter(4)
+        accepted, f_type, d_soc, lam_soc = soc_correction(
+            x,
+            d,
+            p,
+            jnp.array(0.0),
+            f(x, p),
+            grad_f @ d,
+            g_val,
+            jac,
+            jnp.eye(2),
+            grad_f,
+            jnp.zeros(1),
+            th,
+            fl,
+            jnp.array(1e4),
+            f,
+            g,
+            lhs,
+            rhs,
+            lb,
+            ub,
+            2,
+            1,
+            cfg,
+        )
+        assert bool(accepted) and bool(f_type)
+        x_star = jnp.array([1.0, 0.0])
+        x_full = x + d
+        x_soc = x + d_soc
+        assert float(jnp.linalg.norm(x_soc - x_star)) < 0.2 * float(
+            jnp.linalg.norm(x_full - x_star)
+        )
+        theta_full = constraint_violation(g(x_full, p), lhs, rhs)
+        theta_soc = constraint_violation(g(x_soc, p), lhs, rhs)
+        assert float(theta_soc) < 0.1 * float(theta_full)
+        assert lam_soc.shape == (1,) and bool(jnp.isfinite(lam_soc).all())
+
+    def test_soc_disabled_by_filter_block(self, cfg):
+        # A filter that forbids everything makes the SOC trial unacceptable.
+        f, g, lhs, rhs, lb, ub, x, p, grad_f, g_val, jac, d = self._setup()
+        filt = _filter([(0.0, -1e9)])
+        accepted, f_type, d_soc, _ = soc_correction(
+            x,
+            d,
+            p,
+            jnp.array(0.0),
+            f(x, p),
+            grad_f @ d,
+            g_val,
+            jac,
+            jnp.eye(2),
+            grad_f,
+            jnp.zeros(1),
+            filt[0],
+            filt[1],
+            jnp.array(1e4),
+            f,
+            g,
+            lhs,
+            rhs,
+            lb,
+            ub,
+            2,
+            1,
+            cfg,
+        )
+        assert not bool(accepted) and not bool(f_type)
+        assert bool(jnp.isfinite(d_soc).all())
+
+    def test_jit_vmap(self, cfg):
+        f, g, lhs, rhs, lb, ub, x, p, grad_f, g_val, jac, d = self._setup()
+        th, fl = empty_filter(4)
+
+        def run(x, d, grad_f, g_val, jac):
+            return soc_correction(
+                x,
+                d,
+                p,
+                jnp.array(0.0),
+                f(x, p),
+                grad_f @ d,
+                g_val,
+                jac,
+                jnp.eye(2),
+                grad_f,
+                jnp.zeros(1),
+                th,
+                fl,
+                jnp.array(1e4),
+                f,
+                g,
+                lhs,
+                rhs,
+                lb,
+                ub,
+                2,
+                1,
+                cfg,
+            )
+
+        acc, ft, d_soc, lam = jax.jit(jax.vmap(run))(
+            x[None], d[None], grad_f[None], g_val[None], jac[None]
+        )
+        assert acc.shape == (1,) and d_soc.shape == (1, 2) and lam.shape == (1, 1)

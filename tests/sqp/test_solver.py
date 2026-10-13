@@ -93,6 +93,30 @@ def make_wachter_biegler_2000():
     )
 
 
+def make_maratos():
+    """Nocedal & Wright Ex. 15.4: min 2(x1²+x2²−1) − x1  s.t.  x1²+x2² = 1.  x* = [1, 0].
+
+    From a point on the circle the full SQP step leaves the manifold and raises
+    both f and θ (Maratos effect); a second-order correction restores it.
+    """
+
+    def f(x, p):
+        return 2.0 * (x[0] ** 2 + x[1] ** 2 - 1.0) - x[0]
+
+    def g(x, p):
+        return (x[0] ** 2 + x[1] ** 2 - 1.0).reshape(1)
+
+    return ParametricNLPProblem(
+        objective=f,
+        bounds=[jnp.full(2, -5.0), jnp.full(2, 5.0)],
+        n_decision=2,
+        n_params=0,
+        constraints=g,
+        constraint_lhs=jnp.array([0.0]),
+        constraint_rhs=jnp.array([0.0]),
+    )
+
+
 def make_circle_equality():
     """min x[0] + x[1]  s.t.  x[0]² + x[1]² = 1.  Optimal x* = -[1, 1]/√2."""
 
@@ -329,6 +353,26 @@ class TestFilterState:
         state = sqp_solve_single(problem, jnp.array([2.0, 2.0]), jnp.zeros(0), cfg)
         assert bool(jnp.all(jnp.isinf(state.filter_theta)))
         assert int(state.n_restoration) == 0
+
+    def test_soc_accepted_and_speeds_up_maratos(self):
+        problem = make_maratos()
+        x0 = jnp.array([jnp.cos(0.5), jnp.sin(0.5)])
+        with_soc = sqp_solve_single(problem, x0, jnp.zeros(0), self._cfg(soc_max_iter=4))
+        no_soc = sqp_solve_single(problem, x0, jnp.zeros(0), self._cfg(soc_max_iter=0))
+        assert bool(with_soc.converged) and bool(no_soc.converged)
+        assert jnp.allclose(with_soc.x, jnp.array([1.0, 0.0]), atol=1e-5)
+        assert int(with_soc.n_soc) > 0
+        assert int(no_soc.n_soc) == 0
+        assert int(with_soc.iteration) < int(no_soc.iteration)
+
+    def test_soc_under_vmap(self):
+        problem = make_maratos()
+        cfg = self._cfg(soc_max_iter=2)
+        solve = jax.jit(jax.vmap(lambda x0, p: sqp_solve_scan(problem, x0, p, cfg)))
+        x0 = jnp.array([[jnp.cos(0.5), jnp.sin(0.5)], [jnp.cos(-0.8), jnp.sin(-0.8)]])
+        state = solve(x0, jnp.zeros((2, 0)))
+        assert bool(jnp.all(state.converged))
+        assert jnp.allclose(state.x, jnp.tile(jnp.array([1.0, 0.0]), (2, 1)), atol=1e-5)
 
     def test_stagnation_reset_clears_filter(self):
         # Force a reset on every step: patience=1 and alpha_tol above any step.

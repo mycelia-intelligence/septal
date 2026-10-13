@@ -243,6 +243,15 @@ class SQPConfig:
     # When full, the entry with the largest θ is evicted.
     restoration_reg: float = 1e-4  # ζ — Tikhonov term added to the Gauss–Newton
     # Hessian JᵀWJ of the feasibility restoration QP.
+    soc_max_iter: int = 4  # Second-order corrections tried when the first
+    # filter trial is rejected with θ(x+α₀d) ≥ θ_k
+    # (Wächter & Biegler 2006, §2.4).  Each costs
+    # one QP solve; 0 disables.  Under jax.vmap the
+    # lax.cond lowers to a select, so every batch
+    # element pays for the corrections on every
+    # iteration.
+    soc_kappa: float = 0.99  # κ_soc — keep correcting only while the SOC
+    # trial's θ drops to ≤ κ_soc × the previous one.
 
     def __post_init__(self) -> None:
         if self.step_acceptance not in ("filter", "merit"):
@@ -313,6 +322,8 @@ class SQPState(NamedTuple):
     # (W&B 2005 initial filter {θ ≥ θ_max}).
     n_restoration: jnp.ndarray  # integer scalar — number of iterations in which
     # the feasibility restoration phase was entered.
+    n_soc: jnp.ndarray  # integer scalar — number of accepted second-order
+    # correction steps.
 
 
 # ---------------------------------------------------------------------------

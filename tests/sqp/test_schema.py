@@ -99,6 +99,11 @@ class TestSQPConfig:
         assert cfg.filter_size == 20
         assert cfg.restoration_reg == 1e-4
 
+    def test_soc_defaults(self):
+        cfg = SQPConfig()
+        assert cfg.soc_max_iter == 4
+        assert cfg.soc_kappa == 0.99
+
     def test_merit_step_acceptance_accepted(self):
         cfg = SQPConfig(step_acceptance="merit")
         assert cfg.step_acceptance == "merit"
@@ -134,10 +139,11 @@ class TestSQPState:
             filter_f=jnp.full(K, jnp.inf),
             theta_max=jnp.array(1e4),
             n_restoration=jnp.array(0, dtype=jnp.int32),
+            n_soc=jnp.array(0, dtype=jnp.int32),
         )
         # Must be flattenable by JAX
         leaves, treedef = jax.tree_util.tree_flatten(state)
-        assert len(leaves) == 19
+        assert len(leaves) == 20
         reconstructed = jax.tree_util.tree_unflatten(treedef, leaves)
         assert jnp.allclose(reconstructed.x, state.x)
 
@@ -163,6 +169,7 @@ class TestSQPState:
             filter_f=jnp.full(K, jnp.inf),
             theta_max=jnp.array(1e4),
             n_restoration=jnp.array(0, dtype=jnp.int32),
+            n_soc=jnp.array(0, dtype=jnp.int32),
         )
         new_state = state._replace(converged=jnp.array(True))
         assert bool(new_state.converged)

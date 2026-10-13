@@ -29,11 +29,13 @@ from scipy.stats import qmc
 
 from septal.jax.sqp.convergence import is_converged
 from septal.jax.sqp.filter import (
+    _eval_trial,
     augment_filter,
     empty_filter,
     filter_line_search,
     restoration_direction,
     restoration_line_search,
+    soc_correction,
 )
 from septal.jax.sqp.hessian import (
     bfgs_update,
@@ -154,6 +156,7 @@ def init_sqp_state(
         filter_f=filter_f0,
         theta_max=theta_max0,
         n_restoration=jnp.array(0, dtype=jnp.int32),
+        n_soc=jnp.array(0, dtype=jnp.int32),
     )
 
 
@@ -262,7 +265,69 @@ def make_sqp_step(
                 cfg,
             )
 
-            # 4b. Feasibility restoration when no trial step was acceptable.
+            # 4b. Second-order correction (Wächter & Biegler 2006, step A-5.3):
+            #     when the *first* trial was rejected and did not reduce θ, re-solve
+            #     the QP with the constraint linearisation error folded in.  An
+            #     accepted SOC trial replaces the backtracking result.
+            d_used, lam_used, soc_accepted = d, lam_new, jnp.array(False)
+            if cfg.soc_max_iter > 0 and n_g > 0 and problem.constraints is not None:
+                alpha0 = jnp.asarray(cfg.line_search_alpha0, dtype=x.dtype)
+                theta_first, _ = _eval_trial(
+                    x,
+                    d,
+                    alpha0,
+                    p,
+                    problem.objective,
+                    problem.constraints,
+                    lhs,
+                    rhs,
+                    lb,
+                    ub,
+                    n_g,
+                )
+                first_rejected = (~accepted) | (alpha_f < alpha0)
+                need_soc = first_rejected & (theta_first >= theta_k)
+
+                def _soc(_: None) -> tuple:
+                    return soc_correction(
+                        x,
+                        d,
+                        p,
+                        theta_k,
+                        f_val,
+                        grad_f_d,
+                        g_val,
+                        jac_g,
+                        state.hessian,
+                        grad_f,
+                        lam_new,
+                        state.filter_theta,
+                        state.filter_f,
+                        state.theta_max,
+                        problem.objective,
+                        problem.constraints,  # type: ignore[arg-type]  # guarded above
+                        lhs,
+                        rhs,
+                        lb,
+                        ub,
+                        n,
+                        n_g,
+                        cfg,
+                    )
+
+                def _no_soc(_: None) -> tuple:
+                    return jnp.array(False), jnp.array(False), d, lam_new
+
+                soc_accepted, soc_f_type, d_soc, lam_soc = jax.lax.cond(
+                    need_soc, _soc, _no_soc, None
+                )
+                alpha_f = jnp.where(soc_accepted, alpha0, alpha_f)
+                d_used = jnp.where(soc_accepted, d_soc, d)
+                lam_used = jnp.where(soc_accepted, lam_soc, lam_new)
+                f_type = jnp.where(soc_accepted, soc_f_type, f_type)
+                accepted = accepted | soc_accepted
+
+            # 4c. Feasibility restoration when no trial step was acceptable.
             #     lax.cond keeps the second QP off the hot path for
             #     sqp_solve_single; under jax.vmap it lowers to a select and
             #     BOTH branches execute for every batch element.
@@ -292,14 +357,14 @@ def make_sqp_step(
                     return alpha_r, d_r
 
                 def _keep(_: None) -> tuple[jnp.ndarray, jnp.ndarray]:
-                    return alpha_f, d
+                    return alpha_f, d_used
 
                 alpha, d_used = jax.lax.cond(accepted, _keep, _restore, None)
                 used_restoration = ~accepted
             else:
-                alpha, d_used = alpha_f, d
+                alpha = alpha_f
 
-            # 4c. Augment the filter after an h-type step or on restoration
+            # 4d. Augment the filter after an h-type step or on restoration
             #     (Alg. I step 6 / eq. 2.17).  f-type steps leave it unchanged.
             augment = (accepted & ~f_type) | used_restoration
             aug_theta, aug_f = augment_filter(
@@ -313,7 +378,7 @@ def make_sqp_step(
             filter_theta_new = jnp.where(augment, aug_theta, state.filter_theta)
             filter_f_new = jnp.where(augment, aug_f, state.filter_f)
         else:
-            # 4d. L1 merit, non-monotone Armijo backtracking.
+            # 4e. L1 merit, non-monotone Armijo backtracking.
             #     Reference level: max merit over the last M iterates.
             reference_merit = jnp.max(state.merit_window)
             dir_deriv = merit_directional_deriv(
@@ -333,7 +398,7 @@ def make_sqp_step(
                 n_g,
                 cfg,
             )
-            d_used = d
+            d_used, lam_used, soc_accepted = d, lam_new, jnp.array(False)
 
         # 5. Primal update — project onto the variable box. The QP encodes the
         #    box only as step inequalities solved approximately by ADMM, so the
@@ -353,7 +418,7 @@ def make_sqp_step(
 
         # 7. Lagrangian gradient at new iterate (for BFGS and stationarity)
         grad_lag_new = lagrangian_grad(
-            x_new, lam_new, p, problem.objective, problem.constraints, n_g
+            x_new, lam_used, p, problem.objective, problem.constraints, n_g
         )
 
         # 8. Hessian update: exact Lagrangian Hessian (jax.hessian) or damped BFGS.
@@ -361,7 +426,7 @@ def make_sqp_step(
         if cfg.use_exact_hessian:
             H_new = regularised_lagrangian_hessian(
                 x_new,
-                lam_new,
+                lam_used,
                 p,
                 problem.objective,
                 problem.constraints,
@@ -418,7 +483,7 @@ def make_sqp_step(
         return SQPState(
             x=x_new,
             params_p=p,
-            lam=lam_new,
+            lam=lam_used,
             hessian=H_final,
             grad_lag=grad_lag_new,
             f_val=f_new,
@@ -435,6 +500,7 @@ def make_sqp_step(
             filter_f=filter_f_final,
             theta_max=state.theta_max,
             n_restoration=state.n_restoration + used_restoration.astype(jnp.int32),
+            n_soc=state.n_soc + soc_accepted.astype(jnp.int32),
         )
 
     def sqp_step(state: SQPState, _: None) -> tuple[SQPState, None]:
