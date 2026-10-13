@@ -26,7 +26,7 @@ src/septal/
     │                               min_step_size, judge_trial, filter_line_search,
     │                               soc_correction, restoration_direction,
     │                               restoration_line_search  ("filter" mode, default)
-    ├── convergence.py              kkt_residuals, is_converged
+    ├── convergence.py              kkt_residuals, complementarity_residual, is_converged
     └── factory.py                  ParametricSQPFactory
 tests/
 ├── conftest.py, test_*.py          CasADi backend tests
@@ -223,6 +223,10 @@ Use `use_exact_hessian=True` for constrained problems with curved manifolds.
 - **Polishing Newton-step regression** — on unconstrained problems polishing would accept a pure Newton step `-(Q+σI)⁻¹c` diverging on non-convex. Fixed by Gate 3 (`_has_active` check).
 - **`jnp.linalg.solve` inside lax.scan** — works correctly because the LHS matrix `(Q + σI + ρ·AᵀA)` is constant across ADMM iterations (only RHS changes). XLA caches the factorisation.
 - **Float64** must be enabled before any JAX SQP operation. `import septal.jax.sqp` does this automatically.
+- **Complementarity is part of convergence** (since e95fea8). Stationarity + feasibility alone
+  accepted non-KKT points: a non-zero multiplier on an inactive constraint zeroes the projected
+  Lagrangian gradient (HS013 at (0,0); HS016 at the corner (0.5,1)). Any new convergence shortcut
+  must keep `complementarity_residual` in the test.
 - **vmap trajectories are not bitwise reproducible** — the polishing acceptance gate can flip
   between batched and single LU rounding (observed on the Wächter–Biegler 2000 counterexample:
   a 0.35 difference in `d` at one iterate with `admm_polish=True`, 4e-14 without). Both paths
@@ -259,12 +263,23 @@ SQPConfig(
 )
 ```
 
-Result: **140/140** on 28 problems × 5 Sobol starts (seed=42) in **both** `step_acceptance="filter"`
-(default, with SOC and the restoration phase) and `"merit"`. Σ iterations over all 140 starts:
-filter 1748, merit 1996; over the 100 constrained/parametric starts: filter 1291, merit 1464.
-The nlp-bsuite report now has a Totals block with these sums plus SOC/restoration/stall counts
+Result (nlp-bsuite @ 53fa60d, 39 problems × 5 Sobol starts, seed 42): filter **185/195**
+starts, merit **186/195**; the original 28 problems are **140/140** in both modes. Σ iterations
+over all starts: filter 13271, merit 13133 (dominated by the known non-converging starts below).
+The report's Totals block carries these sums plus SOC/restoration/stall counts
 (`scripts/benchmark_sqp.py --step-acceptance {filter,merit} --out ... --json ...`, compare two
-JSON sidecars with `scripts/compare_reports.py`).
+JSON sidecars with `scripts/compare_reports.py`). Starts are Sobol points in each problem's
+`effective_start_bounds` (infinite bounds → ±10 window around the HS standard start).
+
+Known non-converging starts (both modes unless stated):
+- hs013: 0/5 — no constraint qualification at x*, multipliers unbounded; expected.
+- hs081: 2/5 — the other starts approach the global optimum (f ≈ 0.0541 vs f* = 0.0539498)
+  but stationarity stalls near 1e-2 for 1000 iterations; hs080 (same constraints, no
+  `−½(x1³+x2³+1)²` term) is 5/5. Suspect the inertia correction of the negative-curvature term;
+  not investigated.
+- hs020: 4/5. hs033: 4/5 in filter mode only (one start cycles through 994 restoration stalls).
+- hs016: all starts converge, but to local KKT points (f = 404 vertex, f = 3.98) as often as to
+  f* = 0.25; the benchmark's |f−f*| column is not a convergence criterion.
 
 nlp-bsuite is installed editable into septal's `.venv` (`pip install -e ~/Github/nlp-bsuite
 --no-deps`); run the script from `~/Github/nlp-bsuite` with `~/Github/septal/.venv/bin/python`.
