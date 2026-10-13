@@ -100,6 +100,9 @@ class SQPConfig:
         KKT stationarity convergence tolerance.
     tol_feasibility:
         KKT primal feasibility convergence tolerance.
+    tol_complementarity:
+        Tolerance on the complementarity / multiplier-sign residual
+        (``max_i |λ_i|·slack_i``).  ``None`` (default) uses ``tol_stationarity``.
     line_search_beta:
         Backtracking factor (0 < beta < 1).  Step is multiplied by *beta*
         at each rejected trial.
@@ -128,6 +131,7 @@ class SQPConfig:
     max_iter: int = 100
     tol_stationarity: float = 1e-6
     tol_feasibility: float = 1e-6
+    tol_complementarity: float | None = None
     line_search_beta: float = 0.5
     line_search_c: float = 1e-4
     line_search_alpha0: float = 1.0
@@ -338,6 +342,8 @@ class SQPState(NamedTuple):
     n_local_infeasible: jnp.ndarray  # integer scalar — number of times the
     # restoration phase stalled (could not reduce
     # θ): a local minimiser of the infeasibility.
+    complementarity: jnp.ndarray  # scalar — KKT complementarity / multiplier-sign
+    # residual at the current iterate (0 when n_g == 0).
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +373,8 @@ class SQPResult:
         Final KKT stationarity residual.
     kkt_feasibility:
         Final KKT primal feasibility residual.
+    kkt_complementarity:
+        Final KKT complementarity / multiplier-sign residual.
     timing:
         Wall-clock solve time in seconds.
     message:
@@ -381,5 +389,6 @@ class SQPResult:
     iterations: Any = 0
     kkt_stationarity: Any = 0.0
     kkt_feasibility: Any = 0.0
+    kkt_complementarity: Any = 0.0
     timing: float = 0.0
     message: str = ""

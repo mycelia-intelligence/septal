@@ -21,7 +21,11 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 
-from septal.jax.sqp.convergence import is_converged, kkt_residuals
+from septal.jax.sqp.convergence import (
+    complementarity_residual,
+    is_converged,
+    kkt_residuals,
+)
 from septal.jax.sqp.factory import ParametricSQPFactory
 from septal.jax.sqp.filter import (
     augment_filter,
@@ -70,6 +74,7 @@ __all__ = [
     # Convergence
     "kkt_residuals",
     "is_converged",
+    "complementarity_residual",
     # Hessian
     "bfgs_update",
     "lagrangian_grad",

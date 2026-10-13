@@ -27,7 +27,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.stats import qmc
 
-from septal.jax.sqp.convergence import is_converged
+from septal.jax.sqp.convergence import complementarity_residual, is_converged
 from septal.jax.sqp.filter import (
     _eval_trial,
     augment_filter,
@@ -161,6 +161,7 @@ def init_sqp_state(
         theta_resto_entry=jnp.zeros((), dtype=jnp.float64),
         resto_count=jnp.array(0, dtype=jnp.int32),
         n_local_infeasible=jnp.array(0, dtype=jnp.int32),
+        complementarity=jnp.zeros((), dtype=jnp.float64),
     )
 
 
@@ -469,7 +470,15 @@ def make_sqp_step(
             )
         else:
             feas_new = jnp.zeros((), dtype=jnp.float64)
-        conv_new = is_converged(stat_new, feas_new, cfg)
+        # Complementarity / multiplier sign: a non-zero multiplier on an
+        # inactive constraint can zero the projected Lagrangian gradient at a
+        # non-KKT point, so stationarity alone is not a certificate.
+        comp_new = (
+            complementarity_residual(g_new, lam_used, lhs, rhs)
+            if n_g > 0
+            else jnp.zeros((), dtype=jnp.float64)
+        )
+        conv_new = is_converged(stat_new, feas_new, cfg, comp_new)
 
         # 9b. Restoration-phase bookkeeping.
         theta_new = (
@@ -526,6 +535,7 @@ def make_sqp_step(
         filter_theta_final = jnp.where(do_reset, jnp.inf, filter_theta_new)
         filter_f_final = jnp.where(do_reset, jnp.inf, filter_f_new)
         lam_final = jnp.where(do_reset, jnp.zeros_like(lam_used), lam_used)
+        comp_final = jnp.where(do_reset, jnp.zeros_like(comp_new), comp_new)
         grad_lag_final = jnp.where(
             do_reset,
             lagrangian_grad(
@@ -560,6 +570,7 @@ def make_sqp_step(
             resto_count=resto_count_final,
             n_local_infeasible=state.n_local_infeasible
             + resto_stalled.astype(jnp.int32),
+            complementarity=comp_final,
         )
 
     def sqp_step(state: SQPState, _: None) -> tuple[SQPState, None]:
@@ -893,6 +904,7 @@ def state_to_result(
         iterations=int(state.iteration),
         kkt_stationarity=float(state.stationarity),
         kkt_feasibility=float(state.feasibility),
+        kkt_complementarity=float(state.complementarity),
         timing=timing,
         message=msg,
     )
@@ -925,6 +937,7 @@ def batch_state_to_result(
         iterations=state.iteration,
         kkt_stationarity=state.stationarity,
         kkt_feasibility=state.feasibility,
+        kkt_complementarity=state.complementarity,
         timing=timing,
         message=msg,
     )

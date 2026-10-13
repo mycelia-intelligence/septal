@@ -138,6 +138,31 @@ def make_inconsistent():
     )
 
 
+def make_hs013():
+    """HS013: min (x0-2)² + x1²  s.t. (1-x0)³ - x1 >= 0,  x >= 0.   x* = [1, 0], f* = 1.
+
+    At x = [0, 0] the constraint is inactive and ∇f = [-4, 0] points into the
+    box, so it is NOT a KKT point even though a multiplier of -4/3 on the
+    inactive constraint makes the projected Lagrangian gradient vanish.
+    """
+
+    def f(x, p):
+        return (x[0] - 2.0) ** 2 + x[1] ** 2
+
+    def g(x, p):
+        return ((1.0 - x[0]) ** 3 - x[1]).reshape(1)
+
+    return ParametricNLPProblem(
+        objective=f,
+        bounds=[jnp.zeros(2), jnp.full(2, jnp.inf)],
+        n_decision=2,
+        n_params=0,
+        constraints=g,
+        constraint_lhs=jnp.array([0.0]),
+        constraint_rhs=jnp.array([jnp.inf]),
+    )
+
+
 def make_circle_equality():
     """min x[0] + x[1]  s.t.  x[0]² + x[1]² = 1.  Optimal x* = -[1, 1]/√2."""
 
@@ -284,6 +309,28 @@ class TestSQPSolveConstrained:
         problem = make_constrained()
         state = sqp_solve_scan(problem, jnp.zeros(2), jnp.array([1.0]), cfg)
         assert float(state.f_val) == pytest.approx(0.25, abs=5e-3)
+
+
+class TestComplementarityInSolver:
+    @pytest.mark.parametrize("mode", ["filter", "merit"])
+    def test_no_false_convergence_on_hs013_origin(self, mode):
+        problem = make_hs013()
+        cfg = SQPConfig(max_iter=30, step_acceptance=mode)
+        state = sqp_solve_single(problem, jnp.array([0.0, 0.0]), jnp.zeros(0), cfg)
+        # Either not converged, or converged somewhere with f < 4 (f(0,0) = 4).
+        assert (not bool(state.converged)) or float(state.f_val) < 3.9
+
+    def test_complementarity_small_at_true_optimum(self, cfg):
+        problem = make_constrained()  # x* = [0.5, 0.5], constraint active
+        state = sqp_solve_scan(problem, jnp.zeros(2), jnp.array([1.0]), cfg)
+        assert bool(state.converged)
+        assert float(state.complementarity) <= cfg.tol_stationarity
+
+    def test_result_reports_complementarity(self, cfg):
+        problem = make_constrained()
+        state = sqp_solve_scan(problem, jnp.zeros(2), jnp.array([1.0]), cfg)
+        result = state_to_result(state, problem)
+        assert result.kkt_complementarity == pytest.approx(float(state.complementarity))
 
 
 class TestFilterState:

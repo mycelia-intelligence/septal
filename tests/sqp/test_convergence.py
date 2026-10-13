@@ -3,7 +3,11 @@
 import jax.numpy as jnp
 import pytest
 
-from septal.jax.sqp.convergence import is_converged, kkt_residuals
+from septal.jax.sqp.convergence import (
+    complementarity_residual,
+    is_converged,
+    kkt_residuals,
+)
 from septal.jax.sqp.schema import SQPConfig
 
 
@@ -75,3 +79,84 @@ class TestIsConverged:
     def test_not_converged_when_feas_too_large(self):
         cfg = SQPConfig(tol_stationarity=1e-6, tol_feasibility=1e-6)
         assert not bool(is_converged(jnp.array(1e-8), jnp.array(1e-4), cfg))
+
+
+# ---------------------------------------------------------------------------
+# Complementarity / dual feasibility
+# ---------------------------------------------------------------------------
+
+
+class TestComplementarityResidual:
+    """Convention: lam_i > 0 pushes against rhs (upper), lam_i < 0 against lhs."""
+
+    def test_zero_for_equality_rows_regardless_of_multiplier(self):
+        r = complementarity_residual(
+            jnp.array([1.0]), jnp.array([-7.0]), jnp.array([1.0]), jnp.array([1.0])
+        )
+        assert float(r) == 0.0
+
+    def test_zero_for_inactive_with_zero_multiplier(self):
+        r = complementarity_residual(
+            jnp.array([0.5]), jnp.array([0.0]), jnp.array([0.0]), jnp.array([1.0])
+        )
+        assert float(r) == 0.0
+
+    def test_nonzero_multiplier_on_inactive_constraint_is_a_violation(self):
+        # g = 1 with lhs = 0, rhs = inf: slack 1, lam = -4/3 -> residual 4/3
+        r = complementarity_residual(
+            jnp.array([1.0]),
+            jnp.array([-4.0 / 3.0]),
+            jnp.array([0.0]),
+            jnp.array([jnp.inf]),
+        )
+        assert float(r) == pytest.approx(4.0 / 3.0)
+
+    def test_correct_sign_at_active_bound_is_fine(self):
+        # lower bound active (g = lhs), lam negative: OK
+        r = complementarity_residual(
+            jnp.array([0.0]), jnp.array([-3.0]), jnp.array([0.0]), jnp.array([jnp.inf])
+        )
+        assert float(r) == pytest.approx(0.0)
+        # upper bound active, lam positive: OK
+        r = complementarity_residual(
+            jnp.array([1.0]), jnp.array([3.0]), jnp.array([-jnp.inf]), jnp.array([1.0])
+        )
+        assert float(r) == pytest.approx(0.0)
+
+    def test_wrong_sign_at_active_bound_is_a_violation(self):
+        # lower bound active but lam positive (claims to push against rhs = inf)
+        r = complementarity_residual(
+            jnp.array([0.0]), jnp.array([3.0]), jnp.array([0.0]), jnp.array([jnp.inf])
+        )
+        assert float(r) == pytest.approx(3.0)
+
+    def test_infinite_bounds_never_produce_nan(self):
+        r = complementarity_residual(
+            jnp.array([0.0, 0.0]),
+            jnp.array([0.0, 0.0]),
+            jnp.array([-jnp.inf, -jnp.inf]),
+            jnp.array([jnp.inf, jnp.inf]),
+        )
+        assert float(r) == 0.0 and bool(jnp.isfinite(r))
+
+    def test_empty(self):
+        r = complementarity_residual(
+            jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), jnp.zeros(0)
+        )
+        assert float(r) == 0.0
+
+
+class TestIsConvergedWithComplementarity:
+    def test_complementarity_blocks_convergence(self):
+        cfg = SQPConfig(tol_stationarity=1e-6, tol_feasibility=1e-6)
+        ok = is_converged(jnp.array(1e-9), jnp.array(0.0), cfg, jnp.array(0.0))
+        bad = is_converged(jnp.array(1e-9), jnp.array(0.0), cfg, jnp.array(1e-3))
+        assert bool(ok) and not bool(bad)
+
+    def test_default_complementarity_tolerance_follows_stationarity(self):
+        cfg = SQPConfig(tol_stationarity=1e-4)
+        assert cfg.tol_complementarity is None
+        assert bool(is_converged(jnp.array(0.0), jnp.array(0.0), cfg, jnp.array(5e-5)))
+        assert not bool(
+            is_converged(jnp.array(0.0), jnp.array(0.0), cfg, jnp.array(2e-4))
+        )

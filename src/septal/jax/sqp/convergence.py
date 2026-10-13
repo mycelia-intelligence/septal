@@ -1,10 +1,17 @@
 """
 KKT residual computation and convergence check for the SQP solver.
 
-Convergence is declared when both:
+Convergence is declared when all of:
 
     ‖proj_{[lb,ub]}(x - ∇_xL) - x‖_∞  ≤  ε_stat   (stationarity, projected gradient)
     max(max(g-rhs, 0), max(lhs-g, 0))_∞             ≤  ε_feas   (primal feasibility)
+    max_i |λ_i| · slack_i                           ≤  ε_comp   (complementarity and
+                                                                 multiplier sign)
+
+The third test matters: with a non-zero multiplier on an *inactive*
+constraint the Lagrangian gradient can vanish at a point that is not a KKT
+point (observed on Hock–Schittkowski 13 and 16), so stationarity alone is
+not a certificate.
 
 The projected-gradient form of stationarity correctly handles active box
 constraints: when x[i]=lb[i] the Lagrangian gradient may be positive (pointing
@@ -93,10 +100,54 @@ def kkt_residuals(
     return stationarity, feas
 
 
+def complementarity_residual(
+    g_val: jnp.ndarray,
+    lam: jnp.ndarray,
+    lhs: jnp.ndarray,
+    rhs: jnp.ndarray,
+) -> jnp.ndarray:
+    """Complementarity / dual-feasibility residual for ``lhs ≤ g ≤ rhs``.
+
+    Multiplier convention (as returned by the QP): ``λ_i > 0`` pushes against
+    the upper bound ``rhs_i``, ``λ_i < 0`` against the lower bound ``lhs_i``.
+    For each inequality row the residual is the multiplier magnitude times
+    the (clipped) slack of the bound it claims to press on::
+
+        max(λ_i, 0) · max(rhs_i − g_i, 0)  +  max(−λ_i, 0) · max(g_i − lhs_i, 0)
+
+    An infinite bound has no slack to press on, so its slack is replaced by
+    1: a multiplier of the wrong sign then counts with its full magnitude.
+    Equality rows (``lhs_i == rhs_i``) contribute nothing.  Returns the
+    maximum over rows (0 for ``n_g == 0``).
+    """
+    if g_val.shape[0] == 0:
+        return jnp.zeros((), dtype=jnp.float64)
+    is_eq = lhs == rhs
+    slack_hi = jnp.where(jnp.isfinite(rhs), jnp.maximum(rhs - g_val, 0.0), 1.0)
+    slack_lo = jnp.where(jnp.isfinite(lhs), jnp.maximum(g_val - lhs, 0.0), 1.0)
+    res = jnp.maximum(lam, 0.0) * slack_hi + jnp.maximum(-lam, 0.0) * slack_lo
+    return jnp.max(jnp.where(is_eq, 0.0, res))
+
+
 def is_converged(
     stationarity: jnp.ndarray,
     feasibility: jnp.ndarray,
     cfg: SQPConfig,
+    complementarity: jnp.ndarray | None = None,
 ) -> jnp.ndarray:
-    """Return ``True`` iff both KKT tolerances are satisfied."""
-    return (stationarity <= cfg.tol_stationarity) & (feasibility <= cfg.tol_feasibility)
+    """Return ``True`` iff all KKT tolerances are satisfied.
+
+    ``complementarity`` (see :func:`complementarity_residual`) is compared
+    against ``cfg.tol_complementarity``, which defaults to
+    ``cfg.tol_stationarity`` when ``None``.  Omit it to test stationarity and
+    feasibility only.
+    """
+    ok = (stationarity <= cfg.tol_stationarity) & (feasibility <= cfg.tol_feasibility)
+    if complementarity is not None:
+        tol_c = (
+            cfg.tol_stationarity
+            if cfg.tol_complementarity is None
+            else cfg.tol_complementarity
+        )
+        ok = ok & (complementarity <= tol_c)
+    return ok

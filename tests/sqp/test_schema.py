@@ -149,10 +149,11 @@ class TestSQPState:
             theta_resto_entry=jnp.array(0.0),
             resto_count=jnp.array(0, dtype=jnp.int32),
             n_local_infeasible=jnp.array(0, dtype=jnp.int32),
+            complementarity=jnp.array(0.0),
         )
         # Must be flattenable by JAX
         leaves, treedef = jax.tree_util.tree_flatten(state)
-        assert len(leaves) == 24
+        assert len(leaves) == 25
         reconstructed = jax.tree_util.tree_unflatten(treedef, leaves)
         assert jnp.allclose(reconstructed.x, state.x)
 
@@ -183,6 +184,7 @@ class TestSQPState:
             theta_resto_entry=jnp.array(0.0),
             resto_count=jnp.array(0, dtype=jnp.int32),
             n_local_infeasible=jnp.array(0, dtype=jnp.int32),
+            complementarity=jnp.array(0.0),
         )
         new_state = state._replace(converged=jnp.array(True))
         assert bool(new_state.converged)
