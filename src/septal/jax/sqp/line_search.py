@@ -1,6 +1,10 @@
 """
 L1 exact penalty merit function and backtracking line search.
 
+This is the ``step_acceptance="merit"`` path.  The default ``"filter"`` path
+(Wächter & Biegler 2005) lives in :mod:`septal.jax.sqp.filter` and reuses
+:func:`constraint_violation` from here as its θ measure.
+
 Merit function
 --------------
     φ(x; ρ) = f(x, p) + ρ · Σᵢ [max(gᵢ(x,p) - rhsᵢ, 0) + max(lhsᵢ - gᵢ(x,p), 0)]

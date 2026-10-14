@@ -82,13 +82,48 @@ class TestSQPConfig:
         assert cfg.max_iter == 200
         assert cfg.tol_stationarity == 1e-8
 
+    def test_filter_is_default_step_acceptance(self):
+        cfg = SQPConfig()
+        assert cfg.step_acceptance == "filter"
+
+    def test_filter_constants_match_wachter_biegler_defaults(self):
+        cfg = SQPConfig()
+        assert cfg.filter_gamma_theta == 1e-5
+        assert cfg.filter_gamma_f == 1e-5
+        assert cfg.filter_delta == 1.0
+        assert cfg.filter_s_theta == 1.1
+        assert cfg.filter_s_f == 2.3
+        assert cfg.filter_eta_f == 1e-4
+        assert cfg.filter_gamma_alpha == 0.05
+        assert cfg.filter_theta_max_factor == 1e4
+        assert cfg.filter_size == 20
+        assert cfg.restoration_reg == 1e-4
+
+    def test_soc_defaults(self):
+        cfg = SQPConfig()
+        assert cfg.soc_max_iter == 4
+        assert cfg.soc_kappa == 0.99
+
+    def test_restoration_phase_defaults(self):
+        cfg = SQPConfig()
+        assert cfg.restoration_kappa == 0.9
+        assert cfg.restoration_max_iter == 20
+
+    def test_merit_step_acceptance_accepted(self):
+        cfg = SQPConfig(step_acceptance="merit")
+        assert cfg.step_acceptance == "merit"
+
+    def test_invalid_step_acceptance_rejected(self):
+        with pytest.raises(ValueError, match="step_acceptance"):
+            SQPConfig(step_acceptance="armijo")
+
 
 class TestSQPState:
     def test_is_namedtuple_pytree(self):
         """SQPState must be a NamedTuple (JAX pytree)."""
         import jax
 
-        n, n_g, M = 3, 2, 5
+        n, n_g, M, K = 3, 2, 5, 4
         state = SQPState(
             x=jnp.zeros(n),
             params_p=jnp.zeros(1),
@@ -105,15 +140,25 @@ class TestSQPState:
             merit_window=jnp.zeros(M),
             stagnation_count=jnp.array(0, dtype=jnp.int32),
             alpha_last=jnp.array(1.0),
+            filter_theta=jnp.full(K, jnp.inf),
+            filter_f=jnp.full(K, jnp.inf),
+            theta_max=jnp.array(1e4),
+            n_restoration=jnp.array(0, dtype=jnp.int32),
+            n_soc=jnp.array(0, dtype=jnp.int32),
+            in_restoration=jnp.array(False),
+            theta_resto_entry=jnp.array(0.0),
+            resto_count=jnp.array(0, dtype=jnp.int32),
+            n_local_infeasible=jnp.array(0, dtype=jnp.int32),
+            complementarity=jnp.array(0.0),
         )
         # Must be flattenable by JAX
         leaves, treedef = jax.tree_util.tree_flatten(state)
-        assert len(leaves) == 15
+        assert len(leaves) == 25
         reconstructed = jax.tree_util.tree_unflatten(treedef, leaves)
         assert jnp.allclose(reconstructed.x, state.x)
 
     def test_replace(self):
-        n, M = 2, 5
+        n, M, K = 2, 5, 4
         state = SQPState(
             x=jnp.zeros(n),
             params_p=jnp.zeros(1),
@@ -130,6 +175,16 @@ class TestSQPState:
             merit_window=jnp.zeros(M),
             stagnation_count=jnp.array(0, dtype=jnp.int32),
             alpha_last=jnp.array(1.0),
+            filter_theta=jnp.full(K, jnp.inf),
+            filter_f=jnp.full(K, jnp.inf),
+            theta_max=jnp.array(1e4),
+            n_restoration=jnp.array(0, dtype=jnp.int32),
+            n_soc=jnp.array(0, dtype=jnp.int32),
+            in_restoration=jnp.array(False),
+            theta_resto_entry=jnp.array(0.0),
+            resto_count=jnp.array(0, dtype=jnp.int32),
+            n_local_infeasible=jnp.array(0, dtype=jnp.int32),
+            complementarity=jnp.array(0.0),
         )
         new_state = state._replace(converged=jnp.array(True))
         assert bool(new_state.converged)

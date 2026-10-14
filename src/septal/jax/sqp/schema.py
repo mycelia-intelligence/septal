@@ -100,6 +100,9 @@ class SQPConfig:
         KKT stationarity convergence tolerance.
     tol_feasibility:
         KKT primal feasibility convergence tolerance.
+    tol_complementarity:
+        Tolerance on the complementarity / multiplier-sign residual
+        (``max_i |λ_i|·slack_i``).  ``None`` (default) uses ``tol_stationarity``.
     line_search_beta:
         Backtracking factor (0 < beta < 1).  Step is multiplied by *beta*
         at each rejected trial.
@@ -128,6 +131,7 @@ class SQPConfig:
     max_iter: int = 100
     tol_stationarity: float = 1e-6
     tol_feasibility: float = 1e-6
+    tol_complementarity: float | None = None
     line_search_beta: float = 0.5
     line_search_c: float = 1e-4
     line_search_alpha0: float = 1.0
@@ -214,6 +218,58 @@ class SQPConfig:
         True  # Deflate penalty to penalty_init on stagnation.
     )
 
+    # ── Step acceptance: filter (Wächter & Biegler 2005) or L1 merit ─────────
+
+    step_acceptance: str = "filter"  # "filter" — line-search filter method
+    # (Wächter & Biegler, SIAM J. Optim. 16(1),
+    # 2005, Algorithm I).  No penalty parameter;
+    # a trial point is accepted when it improves
+    # either the constraint violation θ or the
+    # objective f against every stored (θ, f)
+    # pair.  "merit" — L1 exact-penalty Armijo
+    # backtracking (non-monotone window).
+    filter_gamma_theta: float = 1e-5  # γ_θ — relative margin on θ in the
+    # sufficient-decrease test (2.11) and in filter
+    # augmentation (2.17).
+    filter_gamma_f: float = 1e-5  # γ_f — margin on f, scaled by θ_k, in (2.11)
+    # and (2.17).
+    filter_delta: float = 1.0  # δ in the switching condition (2.13).
+    filter_s_theta: float = 1.1  # s_θ exponent on θ_k in (2.13) / (2.16).
+    filter_s_f: float = 2.3  # s_f exponent on −∇fᵀd in (2.13) / (2.16).
+    filter_eta_f: float = 1e-4  # η_f — Armijo constant for f-type steps (2.14).
+    filter_gamma_alpha: float = 0.05  # γ_α — safety factor in the minimum step
+    # size α_min (2.16).  α < α_min triggers the
+    # feasibility restoration phase.
+    filter_theta_max_factor: float = 1e4  # θ_max = factor · max(1, θ(x₀)); any
+    # trial with θ ≥ θ_max is rejected outright.
+    filter_size: int = 20  # Fixed capacity of the stored filter (scan/vmap
+    # require static shapes).  Empty slots hold +inf.
+    # When full, the entry with the largest θ is evicted.
+    restoration_reg: float = 1e-4  # ζ — Tikhonov term added to the Gauss–Newton
+    # Hessian JᵀWJ of the feasibility restoration QP.
+    soc_max_iter: int = 4  # Second-order corrections tried when the first
+    # filter trial is rejected with θ(x+α₀d) ≥ θ_k
+    # (Wächter & Biegler 2006, §2.4).  Each costs
+    # one QP solve; 0 disables.  Under jax.vmap the
+    # lax.cond lowers to a select, so every batch
+    # element pays for the corrections on every
+    # iteration.
+    soc_kappa: float = 0.99  # κ_soc — keep correcting only while the SOC
+    # trial's θ drops to ≤ κ_soc × the previous one.
+    restoration_kappa: float = 0.9  # κ_resto — the restoration phase exits once
+    # θ ≤ κ_resto · θ(entry point) at a
+    # filter-acceptable iterate (IPOPT §3.3).
+    restoration_max_iter: int = 20  # Consecutive restoration iterations allowed
+    # before the phase is declared stalled (local
+    # infeasibility) and the solver resets.
+
+    def __post_init__(self) -> None:
+        if self.step_acceptance not in ("filter", "merit"):
+            raise ValueError(
+                "step_acceptance must be 'filter' or 'merit', "
+                f"got {self.step_acceptance!r}"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Solver state  (JAX pytree via NamedTuple)
@@ -268,6 +324,26 @@ class SQPState(NamedTuple):
     # recent merit values for non-monotone line search.
     stagnation_count: jnp.ndarray  # integer scalar — consecutive near-zero steps.
     alpha_last: jnp.ndarray  # scalar — step length accepted on last iteration.
+    filter_theta: jnp.ndarray  # shape (filter_size,) — θ coordinate of each stored
+    # filter entry; +inf marks an empty slot.
+    filter_f: jnp.ndarray  # shape (filter_size,) — f coordinate of each stored
+    # filter entry; +inf marks an empty slot.
+    theta_max: jnp.ndarray  # scalar — hard upper limit on θ for any trial point
+    # (W&B 2005 initial filter {θ ≥ θ_max}).
+    n_restoration: jnp.ndarray  # integer scalar — number of iterations in which
+    # the feasibility restoration phase was entered.
+    n_soc: jnp.ndarray  # integer scalar — number of accepted second-order
+    # correction steps.
+    in_restoration: jnp.ndarray  # bool scalar — the feasibility restoration phase
+    # is active (next step minimises θ, not the QP model).
+    theta_resto_entry: jnp.ndarray  # scalar — θ at the iterate where the current
+    # restoration phase was entered (exit reference).
+    resto_count: jnp.ndarray  # integer scalar — consecutive restoration iterations.
+    n_local_infeasible: jnp.ndarray  # integer scalar — number of times the
+    # restoration phase stalled (could not reduce
+    # θ): a local minimiser of the infeasibility.
+    complementarity: jnp.ndarray  # scalar — KKT complementarity / multiplier-sign
+    # residual at the current iterate (0 when n_g == 0).
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +373,8 @@ class SQPResult:
         Final KKT stationarity residual.
     kkt_feasibility:
         Final KKT primal feasibility residual.
+    kkt_complementarity:
+        Final KKT complementarity / multiplier-sign residual.
     timing:
         Wall-clock solve time in seconds.
     message:
@@ -311,5 +389,6 @@ class SQPResult:
     iterations: Any = 0
     kkt_stationarity: Any = 0.0
     kkt_feasibility: Any = 0.0
+    kkt_complementarity: Any = 0.0
     timing: float = 0.0
     message: str = ""
