@@ -85,7 +85,7 @@ class JaxCasADiEvaluator(Callback):
         x_numpy = np.array(arg[0]).reshape(self.nd, 1)
         x_jax = jnp.array(x_numpy)
         y_jax = jnp.reshape(self._forward_pass(x_jax), (self.n_out_dim, 1))
-        return [DM([y_jax[i] for i in range(self.n_out_dim)])]
+        return [DM(np.asarray(y_jax))]
 
     def has_reverse(self, nadj: int) -> bool:
         return nadj == 0

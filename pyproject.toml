@@ -1,42 +1,43 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
-
-[tool.poetry]
-name = "septal"
-version = "0.1.0"
-description = "Nonlinear programming with JAX and CasADi"
-readme = "README.md"
-packages = [{ include = "septal", from = "src" }]
-
-[tool.poetry.dependencies]
-python = ">=3.10"
-casadi = ">=3.6"
-jax = ">=0.4"
-jaxlib = ">=0.4"
-jaxopt = ">=0.8"
-numpy = ">=1.24"
-scipy = ">=1.11"
-
-[tool.poetry.group.dev.dependencies]
-pytest = ">=7"
-pytest-cov = "*"
-ruff = ">=0.11,<0.12"
-mypy = "<1.15"
-black = ">=22,<23"
 
 [project]
 name = "septal"
-version = "0.1.0"
-description = "Nonlinear programming with JAX and CasADi"
+dynamic = ["version"]
+description = "Nonlinear programming with JAX: a vmappable SQP solver, plus a CasADi/IPOPT backend"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Max Mowbray" }]
+keywords = [
+    "nonlinear programming",
+    "optimization",
+    "sqp",
+    "jax",
+    "casadi",
+    "ipopt",
+    "parametric optimization",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
+]
 
 dependencies = [
     "casadi>=3.6",
-    "jax>=0.4",
-    "jaxlib>=0.4",
+    "jax>=0.4.30",
+    "jaxlib>=0.4.30",
     "jaxopt>=0.8",
     "numpy>=1.24",
     "scipy>=1.11",
@@ -56,11 +57,20 @@ docs = [
     "sphinx-autodoc-typehints>=2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mycelia-intelligence/septal"
+Repository = "https://github.com/mycelia-intelligence/septal"
+Issues = "https://github.com/mycelia-intelligence/septal/issues"
+Changelog = "https://github.com/mycelia-intelligence/septal/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "septal.__version__" }
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-dir]
-"" = "src"
+[tool.setuptools.package-data]
+septal = ["py.typed"]
 
 [tool.ruff]
 line-length = 88
@@ -84,7 +94,9 @@ line-length = 88
 target-version = ["py310"]
 
 [tool.mypy]
-python_version = "3.10"
+# 3.12, not 3.10: recent jax stubs use PEP 695 type-parameter lists, which mypy
+# rejects under an older target grammar. Ruff (target py310 + UP) guards our syntax.
+python_version = "3.12"
 ignore_missing_imports = true
 check_untyped_defs = true
 warn_return_any = true

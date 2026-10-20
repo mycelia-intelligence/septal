@@ -1,12 +1,19 @@
 Installation
 ============
 
+From PyPI
+---------
+
+::
+
+    pip install septal
+
 Development install
 -------------------
 
 Clone the repository and install in editable mode::
 
-    git clone https://github.com/mycelia-i/septal.git
+    git clone https://github.com/mycelia-intelligence/septal.git
     cd septal
     pip install -e .
 
@@ -40,7 +47,7 @@ Runtime dependencies
      - Version
      - Purpose
    * - ``jax`` / ``jaxlib``
-     - ≥ 0.4
+     - ≥ 0.4.30
      - Array operations, autodiff, JIT compilation, ``vmap``/``pmap``
    * - ``numpy``
      - ≥ 1.24
