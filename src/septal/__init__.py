@@ -20,7 +20,10 @@ from septal.casadax import (
 )
 from septal.jax import sqp
 
+__version__ = "0.2.0"
+
 __all__ = [
+    "__version__",
     "NLPProblem",
     "SolveResult",
     "JaxCasADiEvaluator",

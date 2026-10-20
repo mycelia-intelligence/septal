@@ -10,8 +10,14 @@ sys.path.insert(0, os.path.abspath("../src"))
 project = "septal"
 copyright = "2026, Max Mowbray"
 author = "Max Mowbray"
-version = "0.1.0"
-release = "0.1.0"
+# Read the version from the package without importing it (jax is mocked below).
+import re
+
+with open(
+    os.path.join(os.path.dirname(__file__), "..", "src", "septal", "__init__.py")
+) as _f:
+    release = re.search(r'__version__ = "([^"]+)"', _f.read()).group(1)
+version = release
 
 # -- General configuration ---------------------------------------------------
 

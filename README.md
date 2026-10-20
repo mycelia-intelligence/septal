@@ -33,8 +33,9 @@ src/septal/
         ├── solver.py      sqp_solve_single, sqp_solve_scan, make_solver
         ├── qp_subproblem.py  ADMM + Ruiz equilibration + OSQP polishing
         ├── hessian.py     Damped BFGS + exact Lagrangian Hessian
-        ├── line_search.py L1 merit + Armijo backtracking
-        ├── convergence.py KKT residual computation
+        ├── line_search.py L1 merit + non-monotone Armijo backtracking ("merit" mode)
+        ├── filter.py      Wächter–Biegler filter line search, SOC, restoration ("filter" mode, default)
+        ├── convergence.py KKT residuals incl. complementarity
         └── factory.py     ParametricSQPFactory (high-level API)
 ```
 
@@ -43,10 +44,18 @@ src/septal/
 ## Installation
 
 ```bash
-pip install -e .
+pip install septal
 ```
 
-**Dependencies**: `jax`, `jaxlib`, `numpy`, `scipy`, `casadi` (for `casadax` backend only).
+For development, clone the repository and install in editable mode with the dev tools:
+
+```bash
+git clone https://github.com/mycelia-intelligence/septal.git
+cd septal
+pip install -e ".[dev]"
+```
+
+**Dependencies**: `jax`, `jaxlib`, `numpy`, `scipy`, `jaxopt`, `casadi` (the last two for the `casadax` backend only). Python 3.10–3.12.
 
 > **Float64 precision**: importing `septal.jax.sqp` sets `jax_enable_x64 = True` globally. This is required for numerical stability of BFGS and the KKT system.
 
@@ -79,11 +88,11 @@ problem = ParametricNLPProblem(
 factory = ParametricSQPFactory(problem, SQPConfig(max_iter=200))
 
 x0 = jnp.zeros(3)
-p  = jnp.array([0.5, -0.3, 0.8])
+p  = jnp.array([0.5, -0.3, 1.0])
 result = factory.solve(x0, p)
 
 print(result.success)              # True
-print(result.decision_variables)   # x* ≈ [0.467, -0.133, 0.667]
+print(result.decision_variables)   # x* ≈ [0.433, -0.367, 0.933]
 print(result.kkt_stationarity)     # < 1e-6
 ```
 

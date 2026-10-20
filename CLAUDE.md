@@ -51,6 +51,19 @@ pytest tests/sqp/test_solver.py -v
 # cd /path/to/nlp-bsuite && python scripts/benchmark_sqp.py
 ```
 
+## Releasing
+
+Version lives in one place: `src/septal/__init__.py::__version__` (pyproject reads it via
+`[tool.setuptools.dynamic]`; `docs/conf.py` greps it). To release:
+
+1. Bump `__version__`, add a `CHANGELOG.md` entry, open a PR, merge.
+2. `git tag vX.Y.Z && git push origin vX.Y.Z` on `main`.
+3. `.github/workflows/release.yml` builds sdist + wheel, runs `twine check`, verifies the
+   tag matches `__version__`, then publishes through PyPI trusted publishing (GitHub
+   environment `pypi`, no API token). Local dry run: `python -m build && twine check dist/*`.
+
+CI runs `black --check .` with black 22.x; keep the tree black-clean.
+
 ## SQP algorithm walkthrough
 
 ### Outer loop (`solver.py`)

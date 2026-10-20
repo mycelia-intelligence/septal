@@ -215,9 +215,9 @@ class ParametricSQPFactory:
         ParametricSQPFactory
         """
         n_decision = problem.n_decision
-        assert n_decision is not None, (
-            "NLPProblem.n_decision must be set before conversion"
-        )
+        assert (
+            n_decision is not None
+        ), "NLPProblem.n_decision must be set before conversion"
         param_problem = ParametricNLPProblem(
             objective=problem.objective,
             bounds=problem.bounds,
