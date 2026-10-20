@@ -10,3 +10,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+docs/_build/
+.DS_Store
+.mypy_cache/
+.ruff_cache/
