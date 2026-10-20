@@ -244,6 +244,9 @@ Use `use_exact_hessian=True` for constrained problems with curved manifolds.
   between batched and single LU rounding (observed on the Wächter–Biegler 2000 counterexample:
   a 0.35 difference in `d` at one iterate with `admm_polish=True`, 4e-14 without). Both paths
   converge; do not assert iteration or restoration counts across vmap/non-vmap.
+  The same flip happens between BLAS builds: on the Wächter–Biegler 2000 start restoration
+  fired on macOS and Ubuntu py3.11/3.13 but not on Ubuntu py3.10/3.12. Tests that need the
+  restoration phase force entry with `filter_gamma_alpha=1e9` for one step instead.
 - **hs063 start 5 (filter mode)**: iterate can land on the box face `x1 = x3 = 0`, a first- and
   second-order local minimiser of the constraint violation on the feasible cone, where the QP is
   infeasible. No descent-based restoration can escape it; the restoration-phase stall detection
