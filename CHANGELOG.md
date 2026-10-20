@@ -22,6 +22,9 @@ First release on PyPI.
 - Stagnation and restoration-stall resets also zero the multipliers.
 - Packaging moved to a single PEP 621 `[project]` table; the duplicate Poetry
   metadata and lock file were removed. Minimum `jax`/`jaxlib` is now 0.4.30.
+- CI is GitHub Actions only (Jenkinsfile removed): lint/format/type-check job, test
+  matrix on Python 3.10–3.13 plus macOS, and a build job that runs `twine check`.
+- `ROADMAP.md` removed.
 
 ### Fixed
 - Stationarity and feasibility alone accepted non-KKT points with a non-zero

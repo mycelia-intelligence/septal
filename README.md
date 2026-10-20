@@ -55,7 +55,7 @@ cd septal
 pip install -e ".[dev]"
 ```
 
-**Dependencies**: `jax`, `jaxlib`, `numpy`, `scipy`, `jaxopt`, `casadi` (the last two for the `casadax` backend only). Python 3.10–3.12.
+**Dependencies**: `jax`, `jaxlib`, `numpy`, `scipy`, `jaxopt`, `casadi` (the last two for the `casadax` backend only). Python 3.10–3.13.
 
 > **Float64 precision**: importing `septal.jax.sqp` sets `jax_enable_x64 = True` globally. This is required for numerical stability of BFGS and the KKT system.
 
