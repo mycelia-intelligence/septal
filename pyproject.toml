@@ -94,7 +94,9 @@ line-length = 88
 target-version = ["py310"]
 
 [tool.mypy]
-python_version = "3.10"
+# 3.12, not 3.10: recent jax stubs use PEP 695 type-parameter lists, which mypy
+# rejects under an older target grammar. Ruff (target py310 + UP) guards our syntax.
+python_version = "3.12"
 ignore_missing_imports = true
 check_untyped_defs = true
 warn_return_any = true
