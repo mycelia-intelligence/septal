@@ -369,16 +369,44 @@ class TestFilterState:
         assert bool(state.converged)
         assert jnp.allclose(state.x, -jnp.ones(2) / jnp.sqrt(2.0), atol=1e-4)
 
-    def test_restoration_phase_fires_and_solver_recovers(self):
-        # From this start the SQP step is rejected by the filter; the solver
-        # must enter feasibility restoration and still reach x* = [0.5, 1.25, 0].
-        problem = make_wachter_biegler_2000()
-        cfg = self._cfg(max_iter=200)
-        state = sqp_solve_single(
-            problem, jnp.array([-5.0, 0.5, 0.0]), jnp.zeros(0), cfg
+    def _run_from(self, problem, state, cfg, max_iter):
+        step = jax.jit(make_sqp_step(problem, cfg))
+        for _ in range(max_iter):
+            if bool(state.converged):
+                break
+            state, _ = step(state, None)
+        return state
+
+    def _force_restoration_entry(self, problem, x0, **kw):
+        # Whether the filter line search naturally backtracks below alpha_min
+        # on this start depends on QP rounding (the polishing gate flips between
+        # BLAS builds), so entry is forced: a huge gamma_alpha puts alpha_min
+        # above 1 and every trial is rejected, while the restoration line
+        # search (no alpha_min) proceeds normally.
+        cfg = self._cfg(**kw)
+        forced = jax.jit(
+            make_sqp_step(problem, self._cfg(filter_gamma_alpha=1e9, **kw))
         )
-        assert int(state.n_restoration) > 0
+        state = init_sqp_state(x0, jnp.zeros(0), problem, cfg)
+        theta0 = float(state.feasibility)
+        state, _ = forced(state, None)
+        # With the default kappa one Gauss–Newton step can already satisfy the
+        # exit rule, so only the entry itself is asserted here.
+        assert int(state.n_restoration) == 1
+        assert int(state.n_local_infeasible) == 0
+        assert float(state.feasibility) < theta0
+        return state, cfg
+
+    def test_restoration_phase_fires_and_solver_recovers(self):
+        # After one forced restoration iteration the solver must leave the
+        # phase on its own and still reach x* = [0.5, 1.25, 0].
+        problem = make_wachter_biegler_2000()
+        state, cfg = self._force_restoration_entry(
+            problem, jnp.array([-5.0, 0.5, 0.0]), max_iter=200
+        )
+        state = self._run_from(problem, state, cfg, 200)
         assert bool(state.converged)
+        assert not bool(state.in_restoration)
         assert jnp.allclose(state.x, jnp.array([0.5, 1.25, 0.0]), atol=1e-4)
 
     def test_restoration_under_vmap(self):
@@ -481,17 +509,24 @@ class TestFilterState:
         assert float(jnp.abs(new_state.lam).max()) == 0.0
 
     def test_restoration_phase_spans_iterations_when_exit_is_strict(self):
-        # kappa=1e-3 cannot be met by one Gauss–Newton step, so the phase must
-        # continue over several outer iterations (n_restoration > entries).
+        # kappa=1e-3 cannot be met by one Gauss–Newton step, so after the forced
+        # entry the phase must continue over further outer iterations
+        # (n_restoration > 1) before the solver exits it and converges.
         problem = make_wachter_biegler_2000()
         x0 = jnp.array([-5.0, 0.5, 0.0])
-        strict = sqp_solve_single(
-            problem, x0, jnp.zeros(0), self._cfg(max_iter=300, restoration_kappa=1e-3)
+        state, cfg = self._force_restoration_entry(
+            problem, x0, max_iter=300, restoration_kappa=1e-3
         )
-        default = sqp_solve_single(problem, x0, jnp.zeros(0), self._cfg(max_iter=300))
-        assert bool(strict.converged) and bool(default.converged)
-        assert not bool(strict.in_restoration) and not bool(default.in_restoration)
-        assert int(strict.n_restoration) >= 1
+        assert bool(state.in_restoration)
+        theta_entry = float(state.theta_resto_entry)
+        state = jax.jit(make_sqp_step(problem, cfg))(state, None)[0]
+        assert bool(state.in_restoration)
+        assert int(state.n_restoration) == 2
+        assert float(state.theta_resto_entry) == theta_entry  # same phase
+        state = self._run_from(problem, state, cfg, 300)
+        assert bool(state.converged)
+        assert not bool(state.in_restoration)
+        assert int(state.n_restoration) >= 2
 
     def test_stagnation_reset_clears_filter(self):
         # Force a reset on every step: patience=1 and alpha_tol above any step.

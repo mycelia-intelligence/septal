@@ -51,9 +51,9 @@ def _ipopt_no_gcons(
 
     x = MX.sym("x", n_d, 1)
     F = Function("F", [x], [objective(x)])
-    nlp = {"x": x, "f": F(x)}
+    nlp: dict[str, Any] = {"x": x, "f": F(x)}
 
-    opts = {
+    opts: dict[str, Any] = {
         "ipopt": {"hessian_approximation": "limited-memory"},
         "ipopt.print_level": 0,
         "print_time": 0,
@@ -85,9 +85,9 @@ def _ipopt_gcons(
 
     lbg = np.array(lhs)
     ubg = np.array(rhs)
-    nlp = {"x": x, "f": F(x), "g": G(x)}
+    nlp: dict[str, Any] = {"x": x, "f": F(x), "g": G(x)}
 
-    opts = {
+    opts: dict[str, Any] = {
         "ipopt": {"hessian_approximation": "limited-memory"},
         "ipopt.print_level": 1,
         "print_time": 0,
