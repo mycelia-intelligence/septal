@@ -27,6 +27,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.stats import qmc
 
+from septal.jax.sqp._cond import batch_aware_cond
 from septal.jax.sqp.convergence import complementarity_residual, is_converged
 from septal.jax.sqp.filter import (
     _eval_trial,
@@ -297,22 +298,40 @@ def make_sqp_step(
                     first_rejected & (theta_first >= theta_k) & ~state.in_restoration
                 )
 
-                def _soc(_: None) -> tuple:
+                # Per-lane values are explicit operands so that, under
+                # jax.vmap, batch_aware_cond batches only these and leaves
+                # everything the objective / constraints close over unbatched.
+                def _soc(
+                    x_: jnp.ndarray,
+                    d_: jnp.ndarray,
+                    p_: jnp.ndarray,
+                    theta_: jnp.ndarray,
+                    f_: jnp.ndarray,
+                    grad_f_d_: jnp.ndarray,
+                    g_: jnp.ndarray,
+                    jac_: jnp.ndarray,
+                    hess_: jnp.ndarray,
+                    grad_f_: jnp.ndarray,
+                    lam_: jnp.ndarray,
+                    filt_theta_: jnp.ndarray,
+                    filt_f_: jnp.ndarray,
+                    theta_max_: jnp.ndarray,
+                ) -> tuple:
                     return soc_correction(
-                        x,
-                        d,
-                        p,
-                        theta_k,
-                        f_val,
-                        grad_f_d,
-                        g_val,
-                        jac_g,
-                        state.hessian,
-                        grad_f,
-                        lam_new,
-                        state.filter_theta,
-                        state.filter_f,
-                        state.theta_max,
+                        x_,
+                        d_,
+                        p_,
+                        theta_,
+                        f_,
+                        grad_f_d_,
+                        g_,
+                        jac_,
+                        hess_,
+                        grad_f_,
+                        lam_,
+                        filt_theta_,
+                        filt_f_,
+                        theta_max_,
                         problem.objective,
                         problem.constraints,  # type: ignore[arg-type]  # guarded above
                         lhs,
@@ -324,11 +343,27 @@ def make_sqp_step(
                         cfg,
                     )
 
-                def _no_soc(_: None) -> tuple:
-                    return jnp.array(False), jnp.array(False), d, lam_new
+                def _no_soc(*ops: jnp.ndarray) -> tuple:
+                    return jnp.array(False), jnp.array(False), ops[1], ops[10]
 
-                soc_accepted, soc_f_type, d_soc, lam_soc = jax.lax.cond(
-                    need_soc, _soc, _no_soc, None
+                soc_accepted, soc_f_type, d_soc, lam_soc = batch_aware_cond(
+                    need_soc,
+                    _soc,
+                    _no_soc,
+                    x,
+                    d,
+                    p,
+                    theta_k,
+                    f_val,
+                    grad_f_d,
+                    g_val,
+                    jac_g,
+                    state.hessian,
+                    grad_f,
+                    lam_new,
+                    state.filter_theta,
+                    state.filter_f,
+                    state.theta_max,
                 )
                 alpha_f = jnp.where(soc_accepted, alpha0, alpha_f)
                 d_used = jnp.where(soc_accepted, d_soc, d)
@@ -341,9 +376,10 @@ def make_sqp_step(
             #     outer iterations until θ ≤ κ_resto·θ(entry) at a filter-
             #     acceptable point (exit) or the Gauss–Newton step cannot reduce
             #     θ (stall → local infeasibility → immediate reset).
-            #     lax.cond keeps the second QP off the hot path for
-            #     sqp_solve_single; under jax.vmap it lowers to a select and
-            #     BOTH branches execute for every batch element.
+            #     The cond keeps the second QP off the hot path for
+            #     sqp_solve_single; under jax.vmap BOTH branches execute for
+            #     every batch element (batch_aware_cond keeps closed-over
+            #     constants unbatched while doing so).
             if n_g > 0 and problem.constraints is not None:
                 do_resto = state.in_restoration | ~accepted
                 entering_restoration = ~state.in_restoration & ~accepted
@@ -351,18 +387,29 @@ def make_sqp_step(
                     state.in_restoration, state.theta_resto_entry, theta_k
                 )
 
-                def _restore(_: None) -> tuple[jnp.ndarray, jnp.ndarray]:
+                def _restore(
+                    x_: jnp.ndarray,
+                    p_: jnp.ndarray,
+                    theta_: jnp.ndarray,
+                    g_: jnp.ndarray,
+                    jac_: jnp.ndarray,
+                    filt_theta_: jnp.ndarray,
+                    filt_f_: jnp.ndarray,
+                    theta_max_: jnp.ndarray,
+                    alpha_f_: jnp.ndarray,
+                    d_used_: jnp.ndarray,
+                ) -> tuple[jnp.ndarray, jnp.ndarray]:
                     d_r = restoration_direction(
-                        x, p, g_val, jac_g, lhs, rhs, lb, ub, n, n_g, cfg
+                        x_, p_, g_, jac_, lhs, rhs, lb, ub, n, n_g, cfg
                     )
                     alpha_r = restoration_line_search(
-                        x,
+                        x_,
                         d_r,
-                        p,
-                        theta_k,
-                        state.filter_theta,
-                        state.filter_f,
-                        state.theta_max,
+                        p_,
+                        theta_,
+                        filt_theta_,
+                        filt_f_,
+                        theta_max_,
                         problem.objective,
                         problem.constraints,
                         lhs,
@@ -374,10 +421,24 @@ def make_sqp_step(
                     )
                     return alpha_r, d_r
 
-                def _keep(_: None) -> tuple[jnp.ndarray, jnp.ndarray]:
-                    return alpha_f, d_used
+                def _keep(*ops: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+                    return ops[8], ops[9]
 
-                alpha, d_used = jax.lax.cond(do_resto, _restore, _keep, None)
+                alpha, d_used = batch_aware_cond(
+                    do_resto,
+                    _restore,
+                    _keep,
+                    x,
+                    p,
+                    theta_k,
+                    g_val,
+                    jac_g,
+                    state.filter_theta,
+                    state.filter_f,
+                    state.theta_max,
+                    alpha_f,
+                    d_used,
+                )
                 # Multipliers from a QP whose step was rejected are unreliable.
                 lam_used = jnp.where(do_resto, state.lam, lam_used)
                 used_restoration = do_resto

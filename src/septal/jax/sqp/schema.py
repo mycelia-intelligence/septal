@@ -250,8 +250,8 @@ class SQPConfig:
     soc_max_iter: int = 4  # Second-order corrections tried when the first
     # filter trial is rejected with θ(x+α₀d) ≥ θ_k
     # (Wächter & Biegler 2006, §2.4).  Each costs
-    # one QP solve; 0 disables.  Under jax.vmap the
-    # lax.cond lowers to a select, so every batch
+    # one QP solve; 0 disables.  Under jax.vmap
+    # both branches of the cond run, so every batch
     # element pays for the corrections on every
     # iteration.
     soc_kappa: float = 0.99  # κ_soc — keep correcting only while the SOC
