@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-19
 
 ### Fixed
 - Vmapped SQP solves no longer copy constants closed over by the objective or
@@ -56,6 +56,7 @@ First release on PyPI.
   correction, L1 merit non-monotone line search, `vmap`/`pmap` batched solves.
 - CasADi/IPOPT backend (`septal.casadax`) with JAX forward/reverse AD callbacks.
 
+[0.3.0]: https://github.com/mycelia-intelligence/septal/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mycelia-intelligence/septal/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/mycelia-intelligence/septal/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mycelia-intelligence/septal/releases/tag/v0.1.0
