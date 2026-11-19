@@ -27,6 +27,7 @@ src/septal/
     │                               soc_correction, restoration_direction,
     │                               restoration_line_search  ("filter" mode, default)
     ├── convergence.py              kkt_residuals, complementarity_residual, is_converged
+    ├── _cond.py                    batch_aware_cond (lax.cond that keeps constants unbatched under vmap)
     └── factory.py                  ParametricSQPFactory
 tests/
 ├── conftest.py, test_*.py          CasADi backend tests
@@ -132,9 +133,19 @@ Filter storage is fixed-size (`filter_size`, default 20): empty slots are `+inf`
 entries are cleared on insert, and a full filter evicts the largest-θ entry. `theta_max`
 (`1e4·max(1, θ(x₀))`) is a separate state scalar.
 
-Costs: under `jax.vmap` every `lax.cond` lowers to a select, so the SOC QPs (up to
-`soc_max_iter`) and the restoration QP run for every batch element on every iteration.
+Costs: under `jax.vmap` a cond with a batched predicate runs both branches, so the SOC QPs
+(up to `soc_max_iter`) and the restoration QP run for every batch element on every iteration.
 `sqp_solve_single` only pays when they fire. Set `soc_max_iter=0` for cheaper batched solves.
+
+Both sites use `batch_aware_cond` (`_cond.py`), not `lax.cond` (issue #4): `lax.cond`'s
+batching rule broadcasts every operand, including constants the user's objective/constraints
+close over, to the batch size (a captured N×N Cholesky factor became `(B, N, N)`).
+`batch_aware_cond` is a `custom_vmap` whose rule vmaps the branches over batched operands only
+and selects. Per-lane values are passed as explicit operands; tracers a branch closes over are
+hoisted via `jax.make_jaxpr(...).consts`. Any new cond in the step that evaluates the
+objective or constraints must use it; `tests/sqp/test_cond.py` checks the compiled HLO for
+per-lane copies. `custom_vmap` has no reverse-mode rule (neither do the line-search
+`while_loop`s).
 
 ### QP subproblem (`qp_subproblem.py`)
 

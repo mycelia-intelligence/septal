@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Vmapped SQP solves no longer copy constants closed over by the objective or
+  constraints into every batch lane (#4). The second-order-correction and restoration
+  branches used `lax.cond`, whose batching rule broadcasts every operand, closed-over
+  constants included, when the predicate is batched; a captured N×N matrix became
+  `(B, N, N)`. They now go through `septal.jax.sqp._cond.batch_aware_cond`, which
+  batches only per-lane values under `jax.vmap` and is a plain `lax.cond` otherwise.
+  Results are unchanged.
+
 ## [0.2.0] - 2026-10-20
 
 First release on PyPI.
