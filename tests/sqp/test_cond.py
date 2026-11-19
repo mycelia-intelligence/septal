@@ -176,6 +176,32 @@ def make_gp_variance_problem():
     )
 
 
+def make_maratos():
+    """Nocedal & Wright Ex. 15.4: min 2(x1²+x2²−1) − x1  s.t.  x1²+x2² = 1."""
+    return ParametricNLPProblem(
+        objective=lambda x, p: 2.0 * (x[0] ** 2 + x[1] ** 2 - 1.0) - x[0],
+        bounds=[jnp.full(2, -5.0), jnp.full(2, 5.0)],
+        n_decision=2,
+        n_params=0,
+        constraints=lambda x, p: (x[0] ** 2 + x[1] ** 2 - 1.0).reshape(1),
+        constraint_lhs=jnp.array([0.0]),
+        constraint_rhs=jnp.array([0.0]),
+    )
+
+
+def make_wachter_biegler_2000():
+    """min x1  s.t.  x1² − x2 + 1 = 0,  x1 − x3 − ½ = 0,  x2, x3 ≥ 0."""
+    return ParametricNLPProblem(
+        objective=lambda x, p: x[0],
+        bounds=[jnp.array([-10.0, 0.0, 0.0]), jnp.full(3, 10.0)],
+        n_decision=3,
+        n_params=0,
+        constraints=lambda x, p: jnp.array([x[0] ** 2 - x[1] + 1.0, x[0] - x[2] - 0.5]),
+        constraint_lhs=jnp.zeros(2),
+        constraint_rhs=jnp.zeros(2),
+    )
+
+
 class TestSolverKeepsConstantsUnbatched:
     x0 = jnp.zeros((B, 2))
     ps = jax.random.uniform(jax.random.PRNGKey(1), (B, 2), minval=-1.5, maxval=1.5)
@@ -214,8 +240,6 @@ class TestSolverKeepsConstantsUnbatched:
 
     def test_soc_fires_in_some_lanes_only(self):
         """Maratos start needs a SOC; the lane starting at the optimum does not."""
-        from tests.sqp.test_solver import make_maratos
-
         problem = make_maratos()
         cfg = SQPConfig(step_acceptance="filter", use_exact_hessian=True)
         step = make_sqp_step(problem, cfg)
@@ -236,8 +260,6 @@ class TestSolverKeepsConstantsUnbatched:
             np.testing.assert_allclose(x_b[i], x_i, atol=1e-6)
 
     def test_restoration_fires_under_vmap(self):
-        from tests.sqp.test_solver import make_wachter_biegler_2000
-
         problem = make_wachter_biegler_2000()
         # A huge gamma_alpha rejects every filter trial, forcing restoration.
         cfg = SQPConfig(step_acceptance="filter", filter_gamma_alpha=1e9)
