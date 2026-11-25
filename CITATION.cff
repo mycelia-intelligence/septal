@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use septal in your research, please cite it using the metadata below."
+title: "septal: Parametric nonlinear programming with JAX"
+type: software
+authors:
+  - family-names: Mowbray
+    given-names: Max
+abstract: >-
+  Parametric nonlinear programming with JAX: a vmappable SQP solver, plus a
+  CasADi/IPOPT backend.
+license: MIT
+repository-code: "https://github.com/mycelia-intelligence/septal"
+url: "https://github.com/mycelia-intelligence/septal"
+keywords:
+  - nonlinear programming
+  - optimization
+  - sqp
+  - jax
+  - casadi
+  - ipopt
+  - parametric optimization

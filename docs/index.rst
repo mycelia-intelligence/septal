@@ -43,6 +43,7 @@ pure-JAX batched SQP solver and optional CasADi/IPOPT integration.
    casadi_ipopt
    algorithm
    benchmark
+   citing
 
 .. toctree::
    :maxdepth: 2
