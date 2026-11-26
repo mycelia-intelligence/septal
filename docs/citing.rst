@@ -10,7 +10,7 @@ If you use septal in academic work, please cite it:
      title   = {septal: Parametric nonlinear programming with JAX},
      year    = {2026},
      url     = {https://github.com/mycelia-intelligence/septal},
-     version = {0.3.0},
+     version = {0.3.1},
      license = {MIT}
    }
 
