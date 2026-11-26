@@ -450,3 +450,24 @@ SQPConfig(
 | `constraints` | `Callable` (optional) | `g(x) -> (n_g,)` |
 | `constraint_lhs` / `rhs` | array (optional) | Bounds on `g(x)` |
 | `n_starts` | `int` | Multi-start count (default 5) |
+
+---
+
+## Citing
+
+If you use septal in academic work, please cite it:
+
+```bibtex
+@software{septal,
+  author  = {Mowbray, Max},
+  title   = {septal: Parametric nonlinear programming with JAX},
+  year    = {2026},
+  url     = {https://github.com/mycelia-intelligence/septal},
+  version = {0.3.0},
+  license = {MIT}
+}
+```
+
+Set `version` to the release you used (`python -c "import septal; print(septal.__version__)"`).
+The same metadata is in [`CITATION.cff`](CITATION.cff), which GitHub exposes through the
+"Cite this repository" button.
